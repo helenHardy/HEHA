@@ -1,0 +1,950 @@
+import './style.css';
+import { supabase } from './services/supabase.js';
+import { store } from './store.js';
+import { generateReceiptHTML, printTicket, generateCloseReportHTML } from './utils/printer.js';
+import { generateWhatsAppMessage } from './utils/whatsapp.js';
+import { checkOpenSession, renderCashModal, openRegister, closeRegister, renderCloseArqueoModal, addCashMove } from './components/CashRegister.js';
+import { renderReports, getDailyReport } from './components/Reports.js';
+import { renderProductManager } from './components/ProductManager.js';
+import { renderKiosk } from './components/Kiosk.js';
+
+// Basic Router State
+let currentView = 'pos'; // pos, reports, products, cash
+
+const app = document.querySelector('#app');
+
+// --- APP ENTRY POINT ---
+async function render() {
+  // Try to restore session on first load if not already checked
+  if (!store.user && !store.sessionChecked) {
+    await store.checkSession();
+    store.sessionChecked = true;
+  }
+
+  if (!store.user) {
+    renderLogin();
+  } else if (store.user.role === 'kiosco') {
+    // NEW: Kiosk Auto-Routing
+    renderKioskMode();
+  } else {
+    renderAuthenticatedLayout();
+  }
+}
+
+// FULL SCREEN KIOSK MODE (Prevents exiting easily)
+function renderKioskMode() {
+  // Inject Kiosk styles if needed or simply call renderKiosk in a cleaned container
+  // We reuse the 'kiosk' view logic but ensure it's the only thing visible
+  app.innerHTML = ''; // Wipe everything
+
+  // Create a container for the kiosk
+  const kioskContainer = document.createElement('div');
+  kioskContainer.id = 'kiosk-root';
+  kioskContainer.className = 'w-full h-screen bg-gray-900 overflow-hidden relative';
+  app.appendChild(kioskContainer);
+
+  renderKiosk(kioskContainer);
+
+  // Kiosk Logout Hatch (Bottom Left Hidden)
+  const logoutBtn = document.createElement('div');
+  logoutBtn.className = "fixed bottom-0 left-0 w-20 h-20 z-50 opacity-0 hover:opacity-10 cursor-pointer";
+  logoutBtn.ondblclick = async () => {
+    if (confirm("¿Cerrar sesión de Kiosco?")) {
+      const pass = prompt("Contraseña Admin Kiosco:");
+      if (pass === '1234') { // Should be Env Var or better mechanism
+        await store.logout();
+        render();
+      }
+    }
+  };
+  app.appendChild(logoutBtn);
+}
+
+// --- VIEW COMPONENTS ---
+
+// CLEAN LOGIN UI
+function renderLogin() {
+  app.innerHTML = `
+    <div class="min-h-screen flex flex-col items-center justify-center bg-[#f3f4f6]">
+      <div class="bg-white p-10 rounded-3xl shadow-2xl w-full max-w-md animate-fade-in border border-gray-100">
+        <div class="text-center mb-8">
+            <div class="bg-primary/10 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-4">
+                <span class="text-4xl">🍔</span>
+            </div>
+            <h1 class="text-4xl font-black text-gray-800 tracking-tight">Bienvenido</h1>
+            <p class="text-gray-400 font-medium mt-2">Sistema de Punto de Venta</p>
+        </div>
+        
+        <form id="login-form" class="space-y-6">
+          <div>
+            <label class="block text-sm font-bold text-gray-700 mb-2 ml-1">Correo Electrónico</label>
+            <input type="email" id="email" class="w-full px-5 py-4 rounded-xl bg-gray-50 border border-gray-200 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition font-medium text-gray-700 placeholder-gray-400" placeholder="ej. admin@restaurante.com" required>
+          </div>
+          
+          <div>
+            <label class="block text-sm font-bold text-gray-700 mb-2 ml-1">Contraseña</label>
+            <input type="password" id="password" class="w-full px-5 py-4 rounded-xl bg-gray-50 border border-gray-200 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition font-medium text-gray-700 placeholder-gray-400" placeholder="••••••••" required>
+          </div>
+
+          <div id="login-error" class="hidden bg-red-50 text-red-500 text-sm font-bold p-4 rounded-xl text-center border border-red-100 animate-pulse">
+            Error de credenciales
+          </div>
+
+          <button type="submit" id="btn-login" class="w-full bg-black hover:bg-gray-800 text-white font-bold py-4 rounded-xl shadow-lg transform transition active:scale-95 text-lg flex justify-center items-center gap-2">
+            <span>Iniciar Sesión</span>
+          </button>
+        </form>
+        
+        <p class="mt-8 text-xs text-center text-gray-400 font-medium">
+             Gestión Interna Privada
+        </p>
+      </div>
+      <p class="mt-8 text-gray-400 text-sm font-bold">© 2024 El Sabor POS</p>
+    </div>
+  `;
+
+  document.getElementById('login-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const email = document.getElementById('email').value.trim();
+    const password = document.getElementById('password').value.trim();
+    const btn = document.getElementById('btn-login');
+    const errDiv = document.getElementById('login-error');
+
+    // Loading State
+    btn.disabled = true;
+    btn.classList.add('opacity-75', 'cursor-not-allowed');
+    btn.innerHTML = '<span class="animate-spin text-2xl">↻</span> Verificando...';
+    errDiv.classList.add('hidden');
+
+    try {
+      const { error } = await store.login(email, password);
+      if (error) throw error;
+
+      // Auto-refresh handled by render() via store logic
+      render();
+    } catch (err) {
+      console.error(err);
+      errDiv.innerText = 'Credenciales incorrectas o error de conexión.';
+      errDiv.classList.remove('hidden');
+      btn.disabled = false;
+      btn.classList.remove('opacity-75', 'cursor-not-allowed');
+      btn.innerHTML = '<span>Iniciar Sesión</span>';
+    }
+  });
+}
+
+function renderOpenRegisterModal() {
+  app.innerHTML = renderCashModal();
+  document.getElementById('open-register-btn').addEventListener('click', async () => {
+    const amount = document.getElementById('initial-cash-input').value;
+    await openRegister(amount);
+    store.needsOpenRegister = false;
+    render();
+  });
+}
+
+async function renderAuthenticatedLayout() {
+  // SPECIAL MODE: KIOSK (Full Screen, No Sidebar)
+  if (currentView === 'kiosk') {
+    // Direct render to app container
+    renderKiosk(app);
+
+    // Safety hatch to exit kiosk (Hidden button top-left)
+    const exitBtn = document.createElement('button');
+    exitBtn.className = 'fixed top-0 left-0 w-10 h-10 z-50 opacity-0 hover:opacity-50 bg-red-500';
+    exitBtn.onclick = () => {
+      if (confirm('¿Salir del Modo Kiosco? (Requiere contraseña de admin)')) {
+        const pass = prompt('Contraseña Admin:');
+        if (pass === '1234') { // Simple check for demo
+          setView('pos');
+        }
+      }
+    };
+    app.appendChild(exitBtn);
+    return;
+  }
+
+  app.innerHTML = `
+      <div class="min-h-screen flex flex-col md:flex-row bg-gray-50">
+        <!-- Sidebar Navigation -->
+        <aside class="w-full md:w-64 bg-dark text-white flex-shrink-0 hidden md:flex flex-col">
+          <div class="p-6 border-b border-gray-700">
+             <h2 class="text-2xl font-bold text-primary">POS System</h2>
+             <p class="text-sm text-gray-400 mt-1">
+               ${store.user.role === 'admin' ? 'Admin' : 'Cajero'}
+               ${store.currentSession ? '<span class="block text-green-400 text-xs mt-1">● Caja Abierta</span>' : ''}
+             </p>
+          </div>
+          <nav class="flex-1 p-4 space-y-2">
+            <button onclick="setView('pos')" class="w-full text-left block py-2.5 px-4 rounded transition duration-200 ${currentView === 'pos' ? 'bg-gray-800 text-white font-medium' : 'hover:bg-gray-700 text-gray-300 hover:text-white'}">
+              🛒 Punto de Venta
+            </button>
+            ${store.user.role === 'admin' ? `
+            <button onclick="setView('products')" class="w-full text-left block py-2.5 px-4 rounded transition duration-200 ${currentView === 'products' ? 'bg-gray-800 text-white font-medium' : 'hover:bg-gray-700 text-gray-300 hover:text-white'}">
+              🍔 Productos
+            </button>
+            <button onclick="setView('reports')" class="w-full text-left block py-2.5 px-4 rounded transition duration-200 ${currentView === 'reports' ? 'bg-gray-800 text-white font-medium' : 'hover:bg-gray-700 text-gray-300 hover:text-white'}">
+              📊 Reportes
+            </button>
+            <button onclick="setView('users')" class="w-full text-left block py-2.5 px-4 rounded transition duration-200 ${currentView === 'users' ? 'bg-gray-800 text-white font-medium' : 'hover:bg-gray-700 text-gray-300 hover:text-white'}">
+              👥 Usuarios
+            </button>
+             <button onclick="setView('kiosk')" class="w-full text-left block py-2.5 px-4 rounded transition duration-200 hover:bg-purple-600 text-gray-300 hover:text-white mt-8 border border-gray-600">
+              🖥️ Modo Kiosco (Cliente)
+            </button>
+            ` : ''}
+             <button onclick="setView('cash')" class="w-full text-left block py-2.5 px-4 rounded transition duration-200 ${currentView === 'cash' ? 'bg-gray-800 text-white font-medium' : 'hover:bg-gray-700 text-gray-300 hover:text-white'}">
+               💰 Caja
+            </button>
+          </nav>
+          <div class="p-4 border-t border-gray-700">
+            <button onclick="store.logout(); render();" id="logout-btn" class="w-full text-left py-2 px-4 rounded hover:bg-red-600 transition text-gray-300 hover:text-white flex items-center gap-2">
+               <span class="font-bold">Cerrar Sesión</span>
+            </button>
+          </div>
+        </aside>
+
+        <!-- Main Content Area -->
+        <main class="flex-1 h-screen overflow-hidden flex flex-col relative" id="main-area">
+           <!-- Mobile Header -->
+           <header class="bg-white shadow-sm p-4 flex justify-between items-center md:hidden">
+              <h1 class="font-bold text-xl text-primary">POS System</h1>
+              <div class="flex gap-2">
+                <button onclick="setView('pos')" class="p-2 bg-gray-100 rounded">POS</button>
+                <button onclick="setView('cash')" class="p-2 bg-gray-100 rounded">Caja</button>
+              </div>
+           </header>
+           
+           <div id="page-content" class="flex-1 overflow-auto p-4 md:p-6 bg-gray-100 relative">
+             <!-- Content Injected Here -->
+           </div>
+        </main>
+      </div>
+    `;
+
+  document.getElementById('logout-btn').addEventListener('click', () => {
+    store.logout();
+    render();
+  });
+
+
+
+  // Inject View Content
+  const pageContent = document.getElementById('page-content');
+
+  if (currentView === 'pos') {
+    renderPOSView(pageContent);
+  } else if (currentView === 'reports') {
+    pageContent.innerHTML = '<div class="flex justify-center p-10"><div class="animate-spin rounded-full h-10 w-10 border-b-2 border-primary"></div></div>';
+    renderReports().then(html => {
+      pageContent.innerHTML = html;
+    });
+  } else if (currentView === 'products') {
+    renderProductManager(pageContent);
+  } else if (currentView === 'users') {
+    renderUsersManager(pageContent);
+  }
+  // Cash view removed - system now works without cash register
+  /*
+  else if (currentView === 'cash') {
+    // ---- CASHIER VIEW LOGIC ----
+  
+    let cashInfoHTML = '';
+  
+    if (store.currentSession) {
+      // Fetch calculations for live view
+      const report = await getDailyReport();
+      const cashSales = report ? report.paymentBreakdown.cash : 0;
+      const initial = store.currentSession.initial_cash;
+      const totalInDrawer = initial + cashSales;
+  
+      cashInfoHTML = `
+           <div class="bg-blue-50 p-6 rounded-lg border border-blue-200 mb-6 text-center">
+             <p class="text-sm text-blue-600 font-bold uppercase mb-1">Monto Total en Caja</p>
+             <p class="text-xs text-gray-500 mb-2">(Inicial + Ventas Efectivo)</p>
+             <p class="text-4xl font-bold text-blue-900">Bs. ${totalInDrawer.toFixed(2)}</p>
+           </div>
+           
+           <div class="grid grid-cols-2 gap-4 text-sm text-gray-600 mb-6">
+              <div class="bg-white p-3 rounded border text-center">
+                 <p>Fondo Inicial</p>
+                 <p class="font-bold">Bs. ${initial.toFixed(2)}</p>
+              </div>
+              <div class="bg-white p-3 rounded border text-center">
+                 <p>Ventas Efectivo</p>
+                 <p class="font-bold text-green-600">+ Bs. ${cashSales.toFixed(2)}</p>
+              </div>
+           </div>
+        `;
+    }
+  
+    pageContent.innerHTML = `
+         <div class="bg-white p-6 rounded-xl shadow-lg max-w-lg mx-auto mt-10">
+           <div class="flex justify-between items-center mb-6">
+               <h2 class="text-2xl font-bold text-gray-800">Mi Caja</h2>
+               <span class="px-3 py-1 rounded-full text-xs font-bold ${store.currentSession ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}">
+                 ${store.currentSession ? 'TURNO ABIERTO' : 'CERRADO'}
+               </span>
+           </div>
+           
+           ${store.currentSession ? `
+             ${cashInfoHTML}
+             
+             <div class="mt-6 p-4 bg-yellow-50 rounded border border-yellow-200">
+               <p class="text-sm text-yellow-800 font-bold">¿Finalizar Turno?</p>
+               <p class="text-xs text-yellow-600 mb-3">Se realizará el arqueo y cierre.</p>
+               <button class="w-full bg-red-500 hover:bg-red-600 text-white font-bold py-3 rounded-lg transition" onclick="handleCloseRegister()">
+                 CERRAR CAJA
+               </button>
+             </div>
+           ` : `
+             <div class="text-center py-8">
+               <p class="text-gray-500 mb-4">No tienes una sesión activa.</p>
+               <p class="text-sm text-gray-400">Pide a un administrador que reinicie el sistema si necesitas abrir caja nuevamente o usa el botón de inicio.</p>
+             </div>
+           `}
+         </div>
+       `;
+  }
+  }
+  */
+
+  // POS State
+  let allProducts = [];
+  let activePosCategory = 'Todos';
+
+  function renderPOSView(container) {
+    container.innerHTML = `
+   <div class="grid grid-cols-12 gap-6 h-full">
+      <div class="col-span-12 lg:col-span-8 overflow-y-auto pr-2 flex flex-col h-full" id="products-area">
+         <div class="flex justify-between items-center mb-4 flex-shrink-0">
+             <h2 class="text-2xl font-bold text-gray-800">Menú</h2>
+             <!-- Search can go here later -->
+         </div>
+         
+         <!-- Categories Bar -->
+         <div class="mb-6 flex gap-2 overflow-x-auto pb-2 scrollbar-hide flex-shrink-0" id="pos-categories">
+             <!-- Filled by JS -->
+         </div>
+
+         <div id="products-grid" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4 gap-4 flex-1 content-start">
+           <p class="text-gray-400 col-span-full">Cargando productos...</p>
+         </div>
+      </div>
+      <div class="col-span-12 lg:col-span-4 bg-white rounded-xl shadow-lg flex flex-col h-full border border-gray-200 overflow-hidden" id="pos-sidebar">
+         ${renderCartUI()}
+      </div>
+   </div>
+ `;
+
+    loadProducts();
+    renderCartList();
+  }
+
+  // Global helper for filtering
+  window.setPosCategory = (cat) => {
+    activePosCategory = cat;
+    renderProductGrid();
+    renderCategories(); // To update active state
+  };
+
+  async function loadProducts() {
+    const { data } = await supabase.from('products').select('*').order('name');
+    if (data) {
+      allProducts = data;
+      renderCategories();
+      renderProductGrid();
+    }
+  }
+
+  function renderCategories() {
+    const container = document.getElementById('pos-categories');
+    if (!container) return;
+
+    const categories = ['Todos', ...new Set(allProducts.map(p => p.category || 'General'))];
+
+    container.innerHTML = categories.map(cat => `
+      <button onclick="setPosCategory('${cat}')" 
+          class="px-4 py-2 rounded-lg text-sm font-bold whitespace-nowrap transition shadow-sm border ${activePosCategory === cat ? 'bg-primary text-white border-primary' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}">
+          ${cat}
+      </button>
+  `).join('');
+  }
+
+  function renderProductGrid() {
+    const container = document.getElementById('products-grid');
+    if (!container) return;
+
+    const filtered = activePosCategory === 'Todos'
+      ? allProducts
+      : allProducts.filter(p => (p.category || 'General') === activePosCategory);
+
+    if (filtered.length === 0) {
+      container.innerHTML = '<p class="text-gray-400 col-span-full py-8 text-center">No hay productos en esta categoría.</p>';
+      return;
+    }
+
+    container.innerHTML = filtered.map(p => `
+      <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-md transition cursor-pointer flex flex-col group" onclick="addToCart(${p.id})">
+         <div class="h-32 bg-gray-100 relative overflow-hidden">
+           <img src="${p.image_url}" class="w-full h-full object-cover group-hover:scale-110 transition duration-500" onerror="this.src='https://placehold.co/300x200'">
+           <div class="absolute bottom-2 right-2 bg-white/90 backdrop-blur px-2 py-0.5 rounded text-xs font-bold shadow-sm">
+              Bs. ${p.price}
+           </div>
+         </div>
+         <div class="p-3">
+           <h3 class="font-bold text-sm text-gray-800 truncate mb-1 leading-tight">${p.name}</h3>
+         </div>
+      </div>
+  `).join('');
+  }
+
+  // --- LOGIC HELPERS ---
+
+  window.setView = async (view) => {
+    if ((view === 'products' || view === 'reports') && store.user.role !== 'admin') {
+      return alert('Acceso Denegado: Solo Administradores.');
+    }
+    currentView = view;
+    await renderAuthenticatedLayout(); // Re-render logic needs to handle async for some views now
+  };
+
+  window.setOrderType = (type) => {
+    store.orderType = type;
+    // Update UI bits
+    const badge = document.getElementById('order-type-badge');
+    if (badge) badge.innerText = type === 'whatsapp' ? 'WhatsApp' : (type === 'mesa' ? 'Mesa' : 'Para Llevar');
+
+    // Re-render controls classes
+    document.querySelectorAll('.order-type-btn').forEach(btn => {
+      // rudimentary class toggle based on onclick attr parsing or just re-render cart UI
+    });
+
+    // Easiest: Re-render Cart UI section
+    const sidebar = document.getElementById('pos-sidebar');
+    if (sidebar) sidebar.innerHTML = renderCartUI();
+    renderCartList();
+  };
+
+  function renderCartUI() {
+    return `
+  <div class="p-4 border-b border-gray-100 bg-gray-50">
+      <h3 class="font-bold text-lg text-gray-700 flex items-center">
+      Orden Actual
+      <span class="ml-2 bg-primary text-white text-xs px-2 py-0.5 rounded-full" id="order-type-badge">${store.orderType === 'whatsapp' ? 'WhatsApp' : (store.orderType === 'mesa' ? 'Mesa' : 'Llevar')}</span>
+      </h3>
+      <div class="flex mt-3 bg-gray-200 rounded-lg p-1" id="order-type-controls">
+      <button onclick="setOrderType('mesa')" class="order-type-btn flex-1 py-1 text-xs font-semibold rounded-md ${store.orderType === 'mesa' ? 'bg-white shadow text-primary' : 'text-gray-500 hover:bg-gray-100'} transition-all">Mesa</button>
+      <button onclick="setOrderType('llevar')" class="order-type-btn flex-1 py-1 text-xs font-semibold rounded-md ${store.orderType === 'llevar' ? 'bg-white shadow text-primary' : 'text-gray-500 hover:bg-gray-100'} transition-all">Llevar</button>
+      <button onclick="setOrderType('whatsapp')" class="order-type-btn flex-1 py-1 text-xs font-semibold rounded-md ${store.orderType === 'whatsapp' ? 'bg-white shadow text-primary' : 'text-gray-500 hover:bg-gray-100'} transition-all flex justify-center items-center gap-1">WhatsApp</button>
+      </div>
+  </div>
+  
+  <div class="flex-1 overflow-y-auto p-4 space-y-3" id="cart-items">
+      <!-- Replaced by JS -->
+  </div>
+  
+  <div class="p-6 bg-gray-50 border-t border-gray-200">
+      <div class="flex justify-between mb-2 text-gray-600">
+      <span>Subtotal</span>
+      <span id="cart-subtotal">Bs. ${store.cartTotal.toFixed(2)}</span>
+      </div>
+      <div class="flex justify-between mb-4 text-2xl font-bold text-gray-800">
+      <span>Total</span>
+      <span id="cart-total">Bs. ${store.cartTotal.toFixed(2)}</span>
+      </div>
+      <button onclick="handleCheckout()" class="w-full bg-primary hover:bg-orange-600 text-white font-bold py-4 rounded-xl shadow-lg transform transition active:scale-95 flex justify-center items-center gap-2">
+      COBRAR
+      </button>
+  </div>
+`;
+  }
+
+  function renderCartList() {
+    const container = document.getElementById('cart-items');
+    if (!container) return;
+
+    let html = '';
+
+    // WhatsApp Fields
+    if (store.orderType === 'whatsapp') {
+      html += `
+    <div class="bg-blue-50 p-3 rounded-lg mb-4 border border-blue-100">
+      <h4 class="text-sm font-bold text-blue-800 mb-2">Datos Delivery</h4>
+      <input type="tel" placeholder="Teléfono" class="w-full text-sm p-2 rounded border border-blue-200 mb-2" 
+             value="${store.whatsappDetails.phone}" onchange="updateWhatsappPhone(this.value)">
+      <input type="text" placeholder="Ubicación" class="w-full text-sm p-2 rounded border border-blue-200 mb-2" 
+             value="${store.whatsappDetails.location}" onchange="updateWhatsappLocation(this.value)">
+      
+      <div class="grid grid-cols-2 gap-2">
+          <div>
+              <label class="block text-xs font-bold text-blue-800 mb-1">Método Pago</label>
+              <select class="w-full text-sm p-2 rounded border border-blue-200" onchange="updateWhatsappPayment(this.value)">
+                  <option value="qr" ${store.whatsappDetails.paymentMethod === 'qr' ? 'selected' : ''}>QR</option>
+                  <option value="efectivo" ${store.whatsappDetails.paymentMethod === 'efectivo' ? 'selected' : ''}>Efectivo</option>
+                  <option value="pendiente" ${store.whatsappDetails.paymentMethod === 'pendiente' ? 'selected' : ''}>Por Pagar</option>
+              </select>
+          </div>
+          <div>
+              <label class="block text-xs font-bold text-blue-800 mb-1">Adelanto (Bs)</label>
+              <input type="number" placeholder="0.00" class="w-full text-sm p-2 rounded border border-blue-200" 
+                 value="${store.whatsappDetails.advance}" onchange="updateWhatsappAdvance(this.value)">
+          </div>
+      </div>
+    </div>
+  `;
+    }
+
+    if (store.cart.length === 0) {
+      html += '<p class="text-center text-gray-400 mt-10">El carrito está vacío</p>';
+    } else {
+      html += store.cart.map(item => `
+    <div class="flex items-center justify-between bg-white p-3 rounded-lg shadow-sm border border-gray-100">
+       <div class="flex items-center gap-3 overflow-hidden">
+         <div class="h-10 w-10 rounded-md bg-gray-200 overflow-hidden flex-shrink-0">
+           <img src="${item.product.image_url}" class="h-full w-full object-cover">
+         </div>
+         <div class="min-w-0">
+           <p class="font-bold text-sm text-gray-800 truncate">${item.product.name}</p>
+           <p class="text-xs text-primary font-bold">Bs. ${(item.product.price * item.quantity).toFixed(2)}</p>
+         </div>
+       </div>
+       <div class="flex items-center gap-2 flex-shrink-0">
+         <button onclick="updateQty(${item.product.id}, -1)" class="w-6 h-6 rounded-full bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center justify-center font-bold">-</button>
+         <span class="text-sm font-bold w-4 text-center">${item.quantity}</span>
+         <button onclick="updateQty(${item.product.id}, 1)" class="w-6 h-6 rounded-full bg-primary text-white hover:bg-orange-600 flex items-center justify-center font-bold">+</button>
+       </div>
+    </div>
+  `).join('');
+    }
+    container.innerHTML = html;
+  }
+
+  // Add to Cart
+  window.addToCart = (id) => {
+    // Use cached products
+    const p = allProducts.find(x => x.id === id);
+    if (p) store.addToCart(p);
+    renderCartList();
+    updateTotals();
+  };
+
+  // WhatsApp Helpers
+  window.updateWhatsappPhone = (val) => {
+    store.whatsappDetails.phone = val;
+  };
+  window.updateWhatsappLocation = (val) => {
+    store.whatsappDetails.location = val;
+  };
+  window.updateWhatsappPayment = (val) => {
+    store.whatsappDetails.paymentMethod = val;
+  };
+  window.updateWhatsappAdvance = (val) => {
+    store.whatsappDetails.advance = parseFloat(val) || 0;
+  };
+
+  window.updateQty = (id, delta) => {
+    store.updateCartQuantity(id, delta);
+    renderCartList();
+    updateTotals();
+  };
+
+  function updateTotals() {
+    const elSub = document.getElementById('cart-subtotal');
+    const elTot = document.getElementById('cart-total');
+    if (elSub) elSub.innerText = `Bs. ${store.cartTotal.toFixed(2)}`;
+    if (elTot) elTot.innerText = `Bs. ${store.cartTotal.toFixed(2)}`;
+  }
+
+  // Checkout
+  window.handleCheckout = async () => {
+    if (store.cart.length === 0) return alert('Carrito vacío');
+    if (store.orderType === 'whatsapp') {
+      const phone = store.whatsappDetails.phone.trim();
+      if (!phone) return alert('Ingrese teléfono para Delivery');
+      // Validation for Bolivia: Usually 8 digits for mobile, 7 for landline. 
+      // User asked for 7, allowing 7 or 8 to be safe and flexible.
+      if (!/^\d{7,8}$/.test(phone)) {
+        return alert('El número de teléfono debe tener 7 u 8 dígitos numéricos válidos para Bolivia.');
+      }
+    }
+
+    // Order Object
+    const order = {
+      id: Date.now().toString().slice(-6),
+      total_amount: store.cartTotal,
+      order_type: store.orderType,
+      customer_phone: store.whatsappDetails.phone,
+      delivery_location: store.whatsappDetails.location,
+      advance_amount: store.orderType === 'whatsapp' ? store.whatsappDetails.advance : 0,
+      payment_method: store.orderType === 'whatsapp' ? store.whatsappDetails.paymentMethod : 'cash',
+      cashier_name: store.user.role === 'admin' ? 'Admin' : 'Cajero',
+      created_at: new Date()
+    };
+
+    // 1. Save to DB
+    const { data: orderData, error: orderError } = await supabase
+      .from('orders')
+      .insert({
+        total_amount: order.total_amount,
+        order_type: order.order_type,
+        status: 'completed',
+        payment_method: store.orderType === 'whatsapp' ? store.whatsappDetails.paymentMethod : 'cash',
+        advance_amount: order.advance_amount,
+        customer_phone: order.customer_phone,
+        delivery_location: order.delivery_location,
+        created_at: order.created_at
+      })
+      .select()
+      .single();
+
+    if (orderError) {
+      console.error('Error saving order:', orderError);
+      alert('Error al guardar pedido en base de datos. Se imprimirá ticket de respaldo.');
+    } else if (orderData) {
+      // Save Items
+      const itemsToInsert = store.cart.map(item => ({
+        order_id: orderData.id,
+        product_id: item.product.id,
+        quantity: item.quantity,
+        price_at_sale: item.product.price // Correct column name!
+      }));
+
+      const { error: itemsError } = await supabase.from('order_items').insert(itemsToInsert);
+      if (itemsError) {
+        console.error('Error saving items:', itemsError);
+        alert('Error CRÍTICO al guardar items: ' + itemsError.message);
+      }
+      if (itemsError) console.error('Error saving items:', itemsError);
+    }
+
+    // 2. Print
+    const ticketHTML = generateReceiptHTML(order, store.cart);
+    printTicket(ticketHTML);
+
+    // 3. WhatsApp
+    if (store.orderType === 'whatsapp') {
+      const msg = generateWhatsAppMessage(order, store.cart);
+      try {
+        await navigator.clipboard.writeText(msg);
+        alert('¡Mensaje copiado! Enviando a WhatsApp...');
+        // Optionally open whatsapp web
+      } catch (err) {
+        prompt("Copia este mensaje:", msg);
+      }
+    }
+
+    store.clearCart();
+    store.whatsappDetails = { phone: '', location: '' };
+
+    // Refresh UI
+    renderPOSView(document.getElementById('page-content'));
+  };
+
+  // Close Register
+  window.handleCloseRegister = async () => {
+    if (!confirm('¿Seguro que desea cerrar caja? Esto finalizará el turno actual.')) return;
+
+    // 1. Get Report Data
+    const report = await getDailyReport();
+    if (!report) return alert('No se pudo generar el reporte para el cierre.');
+
+    // 2. Get initial cash from store
+    const initialCash = store.initialCash || 0;
+
+    // 3. Create and show modal for cash reconciliation
+    const modalHTML = `
+  <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+    <div class="bg-white p-6 rounded-lg shadow-xl w-96">
+      <h3 class="text-xl font-bold mb-4 text-gray-800">Cierre de Caja</h3>
+      <p class="text-gray-700 mb-2">Efectivo Inicial: <span class="font-semibold">Bs. ${initialCash.toFixed(2)}</span></p>
+      <p class="text-gray-700 mb-2">Ventas en Efectivo: <span class="font-semibold">Bs. ${report.paymentBreakdown.cash.toFixed(2)}</span></p>
+      <p class="text-gray-700 mb-4">Retiros: <span class="font-semibold">Bs. ${report.totalWithdrawals.toFixed(2)}</span></p>
+      
+      <label for="actual-cash-input" class="block text-sm font-medium text-gray-700 mb-1">Monto contado en caja (Bs.):</label>
+      <input type="number" id="actual-cash-input" class="w-full p-2 border border-gray-300 rounded-md focus:ring-primary focus:border-primary mb-4" placeholder="0.00">
+      
+      <div id="diff-preview" class="hidden text-center mb-4">
+        <p class="text-sm text-gray-600">Diferencia:</p>
+        <span id="diff-amount" class="text-xl font-bold text-gray-800"></span>
+      </div>
+
+      <div class="flex justify-end space-x-3">
+        <button id="cancel-close-btn" class="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300 transition">Cancelar</button>
+        <button id="confirm-close-btn" class="px-4 py-2 bg-primary text-white rounded-md hover:bg-orange-600 transition">Confirmar Cierre</button>
+      </div>
+    </div>
+  </div>
+`;
+
+    const modalContainer = document.createElement('div');
+    modalContainer.innerHTML = modalHTML;
+    document.body.appendChild(modalContainer);
+
+    // 4. Modal Logic
+    const input = document.getElementById('actual-cash-input');
+    const diffDisplay = document.getElementById('diff-preview');
+    const diffAmount = document.getElementById('diff-amount');
+
+    // CORRECTION: Expected now includes withdrawals subtraction
+    const withdrawals = report.totalWithdrawals || 0;
+    const expected = initialCash + report.paymentBreakdown.cash - withdrawals;
+
+    // Live Difference Calculation
+    input.addEventListener('input', (e) => {
+      const actual = parseFloat(e.target.value) || 0;
+      const diff = actual - expected;
+
+      diffDisplay.classList.remove('hidden');
+      diffAmount.innerText = `Bs. ${diff.toFixed(2)}`;
+
+      if (diff < 0) {
+        diffAmount.className = 'text-xl font-bold text-red-600';
+        diffAmount.innerText += ' (Faltante)';
+      } else if (diff > 0) {
+        diffAmount.className = 'text-xl font-bold text-green-600';
+        diffAmount.innerText += ' (Sobrante)';
+      } else {
+        diffAmount.className = 'text-xl font-bold text-gray-800';
+        diffAmount.innerText += ' (Exacto)';
+      }
+    });
+
+    // Cancel
+    document.getElementById('cancel-close-btn').addEventListener('click', () => {
+      document.body.removeChild(modalContainer);
+    });
+
+    // Confirm Close
+    document.getElementById('confirm-close-btn').addEventListener('click', async () => {
+      const actualCash = parseFloat(input.value);
+      if (isNaN(actualCash)) return alert('Por favor ingresa el monto contado.');
+
+      if (!confirm('¿Confirmar cierre de caja? Esta acción es irreversible.')) return;
+
+      // Prepare Reconciled Data
+      const closeDetails = {
+        finalCash: actualCash,
+        expectedCash: expected,
+        difference: actualCash - expected,
+        salesCash: report.paymentBreakdown.cash,
+        salesDigital: report.paymentBreakdown.digital
+      };
+
+      // DB Close
+      await closeRegister(closeDetails);
+
+      // Remove Modal
+      document.body.removeChild(modalContainer);
+
+      // Generate & Print Full Report
+      const fullReport = {
+        ...report,
+        reconciliation: closeDetails,
+        initialCash: initialCash
+      };
+
+      // Pass ROLE to hide details if not admin
+      const reportHTML = generateCloseReportHTML(fullReport, store.user.role === 'admin' ? 'Admin' : 'Cajero', store.user.role);
+      printTicket(reportHTML);
+
+      alert('Turno cerrado exitosamente.');
+      location.reload();
+    });
+  };
+
+
+
+  // --- USER MANAGEMENT (ADMIN) ---
+
+  async function renderUsersManager(container) {
+    container.innerHTML = `
+  <div class="flex flex-col h-full animate-fade-in">
+      <div class="flex justify-between items-center mb-6">
+          <h2 class="text-3xl font-black text-gray-800">Gestión de Personal</h2>
+          <button id="btn-new-user" class="bg-black hover:bg-gray-800 text-white px-6 py-3 rounded-xl font-bold shadow-lg flex items-center gap-2 transform transition active:scale-95">
+              <span>+ Nuevo Usuario</span>
+          </button>
+      </div>
+
+      <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden flex-1">
+          <div class="overflow-x-auto">
+              <table class="w-full text-left border-collapse">
+                  <thead>
+                      <tr class="bg-gray-50 border-b border-gray-100 text-gray-400 text-xs uppercase tracking-wider">
+                          <th class="p-4 font-bold">Nombre</th>
+                          <th class="p-4 font-bold">Email</th>
+                          <th class="p-4 font-bold">Rol</th>
+                          <th class="p-4 font-bold text-right">Acciones</th>
+                      </tr>
+                  </thead>
+                  <tbody id="users-table-body" class="text-gray-600 text-sm">
+                      <tr><td colspan="4" class="p-8 text-center">Cargando usuarios...</td></tr>
+                  </tbody>
+              </table>
+          </div>
+      </div>
+  </div>
+
+  <!-- NEW USER MODAL -->
+  <div id="user-modal" class="fixed inset-0 bg-black/50 hidden flex items-center justify-center z-50 backdrop-blur-sm">
+      <div class="bg-white rounded-2xl w-full max-w-md p-6 shadow-2xl transform transition-all scale-95 opacity-0" id="user-modal-content">
+          <h3 class="text-2xl font-bold mb-1 text-gray-800">Nuevo Usuario</h3>
+          <p class="text-gray-400 text-sm mb-6">Crea una cuenta para tu equipo.</p>
+          
+          <form id="new-user-form" class="space-y-4">
+              <div>
+                  <label class="block text-sm font-bold text-gray-700 mb-1 ml-1">Nombre Completo</label>
+                  <input type="text" id="new-user-name" class="w-full px-4 py-3 rounded-xl bg-gray-50 border border-gray-200 focus:border-black outline-none font-medium" placeholder="ej. Juan Pérez" required>
+              </div>
+               <div>
+                  <label class="block text-sm font-bold text-gray-700 mb-1 ml-1">Correo (Login)</label>
+                  <input type="email" id="new-user-email" class="w-full px-4 py-3 rounded-xl bg-gray-50 border border-gray-200 focus:border-black outline-none font-medium" placeholder="ej. cajero1@local.com" required>
+              </div>
+              <div>
+                  <label class="block text-sm font-bold text-gray-700 mb-1 ml-1">Contraseña</label>
+                  <input type="password" id="new-user-pass" class="w-full px-4 py-3 rounded-xl bg-gray-50 border border-gray-200 focus:border-black outline-none font-medium" placeholder="Mínimo 6 caracteres" required minlength="6">
+              </div>
+               <div>
+                  <label class="block text-sm font-bold text-gray-700 mb-1 ml-1">Rol</label>
+                  <div class="grid grid-cols-3 gap-2">
+                      <label class="cursor-pointer">
+                          <input type="radio" name="role" value="cajero" checked class="peer sr-only">
+                          <div class="p-3 rounded-xl border border-gray-200 text-center font-bold text-gray-400 peer-checked:bg-black peer-checked:text-white transition">Cajero</div>
+                      </label>
+                       <label class="cursor-pointer">
+                          <input type="radio" name="role" value="kiosco" class="peer sr-only">
+                          <div class="p-3 rounded-xl border border-gray-200 text-center font-bold text-gray-400 peer-checked:bg-purple-600 peer-checked:text-white transition">Kiosco</div>
+                      </label>
+                       <label class="cursor-pointer">
+                          <input type="radio" name="role" value="admin" class="peer sr-only">
+                          <div class="p-3 rounded-xl border border-gray-200 text-center font-bold text-gray-400 peer-checked:bg-red-500 peer-checked:text-white transition">Admin</div>
+                      </label>
+                  </div>
+              </div>
+
+              <div class="pt-4 flex gap-3">
+                  <button type="button" id="btn-cancel-user" class="flex-1 py-3 font-bold text-gray-500 hover:bg-gray-50 rounded-xl transition">Cancelar</button>
+                  <button type="submit" class="flex-1 bg-black hover:bg-gray-800 text-white py-3 rounded-xl font-bold shadow-lg transition">Crear Cuenta</button>
+              </div>
+          </form>
+      </div>
+  </div>
+`;
+
+    // LOAD USERS
+    const loadUsers = async () => {
+      const { data: users, error } = await supabase.from('profiles').select('*').order('created_at', { ascending: false });
+      const tbody = document.getElementById('users-table-body');
+
+      if (error) {
+        tbody.innerHTML = `<tr><td colspan="4" class="p-8 text-center text-red-500">Error al cargar: ${error.message}</td></tr>`;
+        return;
+      }
+
+      tbody.innerHTML = users.map(u => `
+      <tr class="border-b border-gray-50 hover:bg-gray-50 transition">
+          <td class="p-4 font-medium text-gray-800">${u.full_name || 'Sin nombre'}</td>
+          <td class="p-4">${u.email}</td>
+          <td class="p-4">
+              <span class="px-3 py-1 rounded-full text-xs font-bold ${u.role === 'admin' ? 'bg-red-100 text-red-600' :
+          u.role === 'kiosco' ? 'bg-purple-100 text-purple-600' : 'bg-green-100 text-green-600'
+        }">
+                  ${u.role.toUpperCase()}
+              </span>
+          </td>
+          <td class="p-4 text-right">
+              <!-- Delete could go here -->
+          </td>
+      </tr>
+  `).join('');
+    };
+
+    loadUsers();
+
+    // MODAL LOGIC
+    const modal = document.getElementById('user-modal');
+    const modalContent = document.getElementById('user-modal-content');
+    const openModal = () => {
+      modal.classList.remove('hidden');
+      setTimeout(() => {
+        modalContent.classList.remove('scale-95', 'opacity-0');
+        modalContent.classList.add('scale-100', 'opacity-100');
+      }, 10);
+    };
+    const closeModal = () => {
+      modalContent.classList.remove('scale-100', 'opacity-100');
+      modalContent.classList.add('scale-95', 'opacity-0');
+      setTimeout(() => modal.classList.add('hidden'), 200);
+      document.getElementById('new-user-form').reset();
+    };
+
+    document.getElementById('btn-new-user').addEventListener('click', openModal);
+    document.getElementById('btn-cancel-user').addEventListener('click', closeModal);
+
+    // CREATE USER LOGIC (MAGIC RPC)
+    document.getElementById('new-user-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const name = document.getElementById('new-user-name').value;
+      const email = document.getElementById('new-user-email').value;
+      const password = document.getElementById('new-user-pass').value;
+      const role = document.querySelector('input[name="role"]:checked').value;
+      const submitBtn = e.target.querySelector('button[type="submit"]');
+
+      if (password.length < 6) {
+        alert("La contraseña debe tener al menos 6 caracteres.");
+        return;
+      }
+
+      submitBtn.disabled = true;
+      submitBtn.innerText = "Creando...";
+
+      try {
+        // Import createClient dynamically from Supabase CDN
+        const { createClient } = await import('https://esm.sh/@supabase/supabase-js@2');
+
+        const tempClient = createClient("https://bhogdzrahsoyqpnmkxfz.supabase.co", "sb_publishable_kAWgCzmqlq6ExNzSN98CAw__xUt9sdQ", {
+          auth: {
+            persistSession: false,
+            autoRefreshToken: false,
+            detectSessionInUrl: false
+          }
+        });
+
+        // 1. Create Auth User
+        const { data: authData, error: authError } = await tempClient.auth.signUp({
+          email,
+          password
+        });
+
+        if (authError) throw authError;
+        if (!authData.user) throw new Error("No se pudo crear el usuario");
+
+        const newId = authData.user.id;
+
+        // 2. Assign Role & Name via ADMIN RPC
+        const { error: rpcError } = await supabase.rpc('create_profile_manual', {
+          new_id: newId,
+          new_email: email,
+          new_role: role,
+          new_name: name
+        });
+
+        if (rpcError) throw rpcError;
+
+        alert(`Usuario creado correctamente:\n${email} - ${role}`);
+        closeModal();
+        loadUsers();
+
+      } catch (err) {
+        console.error(err);
+        alert("Error: " + err.message);
+      } finally {
+        submitBtn.disabled = false;
+        submitBtn.innerText = "Crear Cuenta";
+      }
+    });
+  }
+
+  // Initial
+  render();
