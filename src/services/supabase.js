@@ -1,6 +1,6 @@
-// CREDENTIALS
-const SUPABASE_URL = "https://bhogdzrahsoyqpnmkxfz.supabase.co";
-const SUPABASE_ANON_KEY = "sb_publishable_kAWgCzmqlq6ExNzSN98CAw__xUt9sdQ"; // Note: User provided this key. It looks unusual for a standard Supabase Anon Key (usually starts with 'eyJ'). If connection fails, please verify.
+// CREDENTIALS - Using standard Vite env variables
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || "https://bhogdzrahsoyqpnmkxfz.supabase.co";
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || "sb_publishable_kAWgCzmqlq6ExNzSN98CAw__xUt9sdQ";
 
 // Mock Data Store (In-memory for demo)
 const mockDb = {
