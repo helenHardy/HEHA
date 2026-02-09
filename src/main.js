@@ -8,9 +8,10 @@ import { renderReports, getDailyReport } from './components/Reports.js';
 import { renderProductManager } from './components/ProductManager.js';
 import { renderKiosk } from './components/Kiosk.js';
 import { renderDashboard } from './components/Dashboard.js';
+import { renderKitchenView } from './components/Kitchen.js';
 
 // Basic Router State
-let currentView = 'dashboard'; // dashboard, pos, reports, products, users, orders, kiosk-orders, cash
+let currentView = 'dashboard'; // dashboard, pos, reports, products, users, orders, kiosk-orders, cash, kitchen
 
 const app = document.querySelector('#app');
 
@@ -54,6 +55,7 @@ function playNotificationSound() {
   oscillator.start(audioContext.currentTime);
   oscillator.stop(audioContext.currentTime + 0.5);
 }
+window.playNotificationSound = playNotificationSound;
 
 // REALTIME: Listen for new Kiosk orders
 let kioskSubscription = null;
@@ -478,6 +480,7 @@ async function renderAuthenticatedLayout() {
              ${renderNavLink('pos', '🛒', 'Punto de Venta', isCollapsed)}
              ${renderNavLink('orders', '📋', 'Pedidos del Día', isCollapsed)}
              ${renderNavLink('kiosk-orders', '🤖', 'Aprobar Kiosco', isCollapsed, true)}
+             ${renderNavLink('kitchen', '👨‍🍳', 'Comandas', isCollapsed)}
              
              ${store.user.role === 'admin' ? `
                <div class="pt-4 pb-2 text-[10px] font-black text-gray-500 uppercase tracking-[0.2em] px-4 transition-opacity duration-300 ${isCollapsed ? 'md:hidden' : 'opacity-100'}">Admin</div>
@@ -561,6 +564,8 @@ async function renderAuthenticatedLayout() {
     renderOrdersHistory(pageContent);
   } else if (currentView === 'kiosk-orders') {
     renderKioskManagerView(pageContent);
+  } else if (currentView === 'kitchen') {
+    renderKitchenView(pageContent);
   } else if (currentView === 'cash') {
     // ---- CASHIER VIEW LOGIC ----
 
@@ -650,7 +655,8 @@ function getViewTitle(view) {
     'products': 'Gestión de Productos',
     'reports': 'Reportes y Estadísticas',
     'users': 'Gestión de Usuarios',
-    'cash': 'Gestión de Caja'
+    'cash': 'Gestión de Caja',
+    'kitchen': 'Control de Cocina'
   };
   return titles[view] || 'Dashboard';
 }
