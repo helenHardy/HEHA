@@ -96,6 +96,14 @@ export async function renderDashboard(container) {
                 <div class="lg:col-span-2 space-y-6">
                     <h3 class="text-2xl font-black text-gray-800">Accesos Rápidos</h3>
                     
+                    <button onclick="window.openExpenseModal()" class="w-full group bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex items-center gap-4 transition hover:bg-black hover:text-white transform hover:-translate-y-1">
+                        <div class="w-12 h-12 bg-red-50 rounded-xl flex items-center justify-center text-2xl group-hover:bg-gray-800 transition">💸</div>
+                        <div class="text-left flex-1">
+                            <p class="font-black uppercase tracking-tighter text-lg leading-tight">Registrar Gasto</p>
+                            <p class="text-xs text-gray-400 group-hover:text-gray-500">Salida de dinero (diario/fijo)</p>
+                        </div>
+                    </button>
+
                     <button onclick="setView('pos')" class="w-full group bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex items-center gap-4 transition hover:bg-black hover:text-white transform hover:-translate-y-1">
                         <div class="w-12 h-12 bg-gray-50 rounded-xl flex items-center justify-center text-2xl group-hover:bg-gray-800 transition">🛒</div>
                         <div class="text-left">

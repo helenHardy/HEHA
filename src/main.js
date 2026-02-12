@@ -68,27 +68,31 @@ function setupKioskRealtime() {
     .channel('kiosk-orders-channel')
     .on(
       'postgres_changes',
-      {
-        event: 'INSERT',
-        schema: 'public',
-        table: 'orders',
-        filter: 'status=eq.pending'
-      },
+      { event: '*', schema: 'public', table: 'orders' },
       (payload) => {
-        const newOrder = payload.new;
-        if (newOrder.cashier_name === 'Kiosco') {
-          console.log("🔔 ¡Nuevo pedido recibido del Kiosco!", newOrder);
+        // We care if it involves Kiosk orders
+        const isKiosk = (payload.new && payload.new.cashier_name === 'Kiosco') ||
+          (payload.old && payload.old.cashier_name === 'Kiosco'); // Note: old might not have all fields depending on replica identity
 
+        // Simpler check: If we are in 'kiosk-orders' view, just refresh. 
+        // Or if it's an INSERT with status pending (notification).
+
+        if (payload.eventType === 'INSERT' && payload.new.status === 'pending' && payload.new.cashier_name === 'Kiosco') {
+          console.log("🔔 ¡Nuevo pedido recibido del Kiosco!", payload.new);
           playNotificationSound();
+          showToast(`🤖 Nuevo pedido de <b>${payload.new.customer_name || 'Cliente'}</b>`, 'success');
           updateKioskBadge();
-          showToast(`🤖 Nuevo pedido de <b>${newOrder.customer_name || 'Cliente'}</b>`, 'success');
-
-          // If current view is kiosk-orders, refresh list
-          if (currentView === 'kiosk-orders') {
-            const pageContent = document.getElementById('page-content');
-            if (pageContent) renderKioskManagerView(pageContent);
-          }
         }
+
+        // If something changed (Update/Delete/Insert) regarding Kiosk orders, refresh the view if we are there
+        if (currentView === 'kiosk-orders') {
+          // Add a small delay/debounce or just refresh
+          const pageContent = document.getElementById('page-content');
+          if (pageContent) renderKioskManagerView(pageContent);
+        }
+
+        // Also update badge for any change (e.g. if one was approved/deleted by another admin)
+        updateKioskBadge();
       }
     )
     .subscribe();
@@ -529,8 +533,50 @@ async function renderAuthenticatedLayout() {
               <!-- Content Injected Here -->
            </div>
 
-           <!-- Floating Toast Container can go here or body -->
+           <!-- Floating Toast Container can go here -->
         </main>
+        
+        <!-- GLOBAL EXPENSE MODAL -->
+        <div id="expense-modal" class="fixed inset-0 bg-black/50 hidden flex items-center justify-center z-[200] backdrop-blur-sm opacity-0 transition-opacity duration-300">
+             <div class="bg-white rounded-[2.5rem] w-full max-w-md p-8 shadow-2xl transform scale-95 transition-transform duration-300" id="expense-modal-content">
+                 <div class="flex justify-between items-center mb-6">
+                    <div>
+                        <h3 class="text-2xl font-black text-gray-800 tracking-tight">Registrar Gasto</h3>
+                        <p class="text-xs text-gray-400 font-bold uppercase tracking-widest">Salida de dinero</p>
+                    </div>
+                    <button onclick="window.closeExpenseModal()" class="w-10 h-10 rounded-xl bg-gray-50 text-gray-400 hover:bg-gray-100 hover:text-gray-800 flex items-center justify-center transition">✕</button>
+                 </div>
+                 
+                 <form id="expense-form" class="space-y-6">
+                     <div class="space-y-2">
+                        <label class="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Descripción</label>
+                        <input type="text" id="expense-desc" required placeholder="Ej: Pasajes, Compra bolsas..." 
+                               class="w-full px-4 py-4 rounded-2xl bg-gray-50 border-none font-bold text-gray-700 focus:ring-2 focus:ring-black/5 transition outline-none">
+                     </div>
+
+                     <div class="flex gap-4">
+                         <div class="space-y-2 flex-1">
+                            <label class="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Monto (Bs)</label>
+                            <input type="number" id="expense-amount" required step="0.50" placeholder="0.00" 
+                                   class="w-full px-4 py-4 rounded-2xl bg-gray-50 border-none font-black text-xl text-gray-800 focus:ring-2 focus:ring-black/5 transition outline-none text-right">
+                         </div>
+                         <div class="space-y-2 flex-1">
+                            <label class="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Tipo</label>
+                            <select id="expense-type" class="w-full px-4 py-4 rounded-2xl bg-gray-50 border-none font-bold text-gray-700 focus:ring-2 focus:ring-black/5 transition outline-none appearance-none cursor-pointer">
+                                <option value="daily">Diario (Caja)</option>
+                                <option value="fixed">Fijo (Mensual)</option>
+                            </select>
+                         </div>
+                     </div>
+                     
+                     <div class="pt-4">
+                        <button type="submit" class="w-full py-4 bg-black text-white rounded-2xl font-black uppercase tracking-widest hover:scale-[1.02] active:scale-95 transition shadow-xl shadow-black/20">
+                           Guardar Gasto
+                        </button>
+                     </div>
+                 </form>
+             </div>
+        </div>
       </div>
     `;
 
@@ -541,6 +587,63 @@ async function renderAuthenticatedLayout() {
       if (el) el.innerText = new Date().toLocaleTimeString('es-ES');
     }, 1000);
   }
+
+  // EXPENSE MODAL LOGIC
+  window.openExpenseModal = () => {
+    const m = document.getElementById('expense-modal');
+    m.classList.remove('hidden');
+    // small delay for transition
+    setTimeout(() => {
+      m.classList.remove('opacity-0');
+      document.getElementById('expense-modal-content').classList.remove('scale-95');
+    }, 10);
+    document.getElementById('expense-desc').focus();
+  };
+
+  window.closeExpenseModal = () => {
+    const m = document.getElementById('expense-modal');
+    m.classList.add('opacity-0');
+    document.getElementById('expense-modal-content').classList.add('scale-95');
+    setTimeout(() => {
+      m.classList.add('hidden');
+      document.getElementById('expense-form').reset();
+    }, 300);
+  };
+
+  document.getElementById('expense-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const desc = document.getElementById('expense-desc').value;
+    const amount = parseFloat(document.getElementById('expense-amount').value);
+    const type = document.getElementById('expense-type').value;
+
+    if (!desc || !amount) return showToast('Completa los campos', 'error');
+
+    try {
+      const { error } = await supabase.from('expenses').insert({
+        description: desc,
+        amount: amount,
+        expense_type: type,
+        created_by: store.user.id
+      });
+
+      if (error) throw error;
+
+      // If daily, it might affect cash drawer if we wanted to link it (optional, keeping separate per request but showing in reports)
+      // If we want it to affect "Cierre de Caja" we would also insert into cash_moves, but user asked for "Gastos por dia" table mainly.
+      // Let's keep it in expenses table as requested.
+
+      showToast('✅ Gasto registrado');
+      window.closeExpenseModal();
+
+      // Refresh current view to show new expense
+      if (typeof setView === 'function') {
+        setView(currentView);
+      }
+    } catch (err) {
+      console.error(err);
+      showToast('Error al guardar gasto', 'error');
+    }
+  });
 
   // Inject View Content
   const pageContent = document.getElementById('page-content');
@@ -553,9 +656,7 @@ async function renderAuthenticatedLayout() {
     renderPOSView(pageContent);
   } else if (currentView === 'reports') {
     pageContent.innerHTML = '<div class="flex justify-center p-10"><div class="animate-spin rounded-full h-10 w-10 border-b-2 border-primary"></div></div>';
-    renderReports().then(html => {
-      pageContent.innerHTML = html;
-    });
+    renderReports(pageContent);
   } else if (currentView === 'products') {
     renderProductManager(pageContent);
   } else if (currentView === 'users') {
@@ -1177,6 +1278,21 @@ window.handleCheckout = async (directPrint = false) => {
     }
   }
 
+  // 4. If payment method is cash, record a cash move
+  if (order.payment_method === 'cash' && store.currentSession) {
+    const { error: cashMoveError } = await supabase.from('cash_moves').insert({
+      session_id: store.currentSession.id,
+      amount: order.total_amount,
+      type: 'sale',
+      description: `Venta POS #${order.id}`,
+      created_by: store.user.id
+    });
+    if (cashMoveError) {
+      console.error('Error recording cash move for sale:', cashMoveError);
+      showToast('Error al registrar movimiento de caja', 'error');
+    }
+  }
+
   // Clear cart and reset
   store.clearCart();
   store.posCustomerName = '';
@@ -1188,7 +1304,7 @@ function showTicketPreview(html, order, cartItems) {
   const modal = document.createElement('div');
   modal.className = 'fixed inset-0 bg-black bg-opacity-70 z-[100] flex items-center justify-center p-4 animate-fade-in';
   modal.innerHTML = `
-      < div class="bg-white rounded-3xl overflow-hidden max-w-sm w-full shadow-2xl flex flex-col max-h-[90vh]" >
+      <div class="bg-white rounded-3xl overflow-hidden max-w-sm w-full shadow-2xl flex flex-col max-h-[90vh]">
       <div class="p-4 bg-gray-50 border-b flex justify-between items-center">
         <h3 class="font-black text-gray-800">Vista Previa del Ticket</h3>
         <button onclick="this.closest('.fixed').remove()" class="text-gray-400 hover:text-gray-600">
@@ -1210,7 +1326,7 @@ function showTicketPreview(html, order, cartItems) {
           FINALIZAR SIN IMPRIMIR
         </button>
       </div>
-    </div >
+    </div>
       `;
 
   document.body.appendChild(modal);
@@ -1233,7 +1349,7 @@ window.handleCloseRegister = async () => {
 
   // 3. Create and show modal for cash reconciliation
   const modalHTML = `
-      < div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" >
+      <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
         <div class="bg-white p-6 rounded-lg shadow-xl w-96">
           <h3 class="text-xl font-bold mb-4 text-gray-800">Cierre de Caja</h3>
           <p class="text-gray-700 mb-2">Efectivo Inicial: <span class="font-semibold">Bs. ${initialCash.toFixed(2)}</span></p>
@@ -1716,6 +1832,13 @@ async function renderOrdersHistory(container) {
                         <svg class="w-5 h-5 fill-current" viewBox="0 0 24 24"><path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.588-5.946 0-6.556 5.332-11.888 11.888-11.888 3.176 0 6.161 1.237 8.404 3.483 2.247 2.247 3.483 5.232 3.483 8.404 0 6.556-5.332 11.889-11.886 11.889-2.003 0-3.969-.505-5.711-1.465l-6.277 1.686zm4.073-6.102c1.728 1.157 3.52 1.765 5.318 1.765 5.501 0 9.976-4.475 9.976-9.976 0-2.659-1.036-5.16-2.915-7.04-1.88-1.879-4.381-2.915-7.041-2.915-5.511 0-9.986 4.475-9.986 9.987 0 1.885.522 3.731 1.51 5.317l-.988 3.61 3.726-.948zm12.923-3.605c-.267-.134-1.578-.778-1.823-.867-.245-.089-.423-.134-.601.134-.178.267-.69 0-.867-.134-.178-.134-.356-.044-.623-.178-1.554-.778-2.695-1.956-3.14-2.734-.178-.311-.019-.478.136-.633.14-.139.311-.356.467-.534.156-.178.209-.304.311-.534.103-.223.052-.423-.026-.556-.078-.134-.601-1.446-.823-1.979-.215-.523-.431-.453-.601-.462-.178-.009-.356-.009-.534-.009-.178 0-.467.067-.712.334-.245.267-.935.912-.935 2.224 0 1.312.956 2.58 1.054 2.714.098.134 1.881 2.872 4.557 4.027 2.676 1.155 2.676.771 3.165.723.489-.048 1.578-.644 1.801-1.267.225-.623.225-1.156.156-1.267-.067-.112-.245-.178-.511-.311z"/></svg>
                      </a>
                    ` : ''}
+                   ${store.user.role === 'admin' ? `
+                     <button onclick="window.deleteOrderHistory('${order.id}')" class="w-12 h-12 bg-red-50 text-red-500 rounded-2xl hover:bg-red-500 hover:text-white transition-all flex items-center justify-center shadow-sm" title="Eliminar Pedido (Admin)">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                     </button>
+                   ` : ''}
               </div>
           </div>
         `;
@@ -1732,9 +1855,9 @@ async function renderOrdersHistory(container) {
     const qrEl = document.getElementById('orders-qr-total');
     const countEl = document.getElementById('orders-count');
 
-    if (totalEl) totalEl.innerText = `Bs. ${total.toFixed(2)}`;
-    if (cashEl) cashEl.innerText = `Bs. ${totalCash.toFixed(2)}`;
-    if (qrEl) qrEl.innerText = `Bs. ${totalQR.toFixed(2)}`;
+    if (totalEl) totalEl.innerText = `Bs.${total.toFixed(2)} `;
+    if (cashEl) cashEl.innerText = `Bs.${totalCash.toFixed(2)} `;
+    if (qrEl) qrEl.innerText = `Bs.${totalQR.toFixed(2)} `;
     if (countEl) countEl.innerText = filtered.length;
   };
 
@@ -1768,6 +1891,21 @@ async function renderOrdersHistory(container) {
     showToast('🖨️ Ticket de orden #' + String(id).slice(-4));
   };
 
+  window.deleteOrderHistory = async (id) => {
+    if (!confirm('¿CONFIRMAR ELIMINACIÓN DE PEDIDO?\nEsta acción es irreversible y solo para administradores.')) return;
+
+    try {
+      const { error } = await supabase.from('orders').delete().eq('id', id);
+      if (error) throw error;
+
+      showToast('🗑️ Pedido eliminado correctamente');
+      renderOrdersHistory(container); // Refresh current view
+    } catch (err) {
+      console.error(err);
+      alert('Error al eliminar: ' + err.message);
+    }
+  };
+
   // Fetch
   const today = new Date(new Date().getTime() - (4 * 60 * 60 * 1000)).toISOString().split('T')[0];
   const { data: orders, error } = await supabase
@@ -1787,7 +1925,7 @@ async function renderOrdersHistory(container) {
 // --- KIOSK MANAGER (FOR CASHIER) ---
 async function renderKioskManagerView(container) {
   container.innerHTML = `
-      <div class="space-y-8 animate-fade-in pb-20">
+    <div class="space-y-8 animate-fade-in pb-20">
         <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
             <div>
                <h2 class="text-4xl font-black text-gray-800 tracking-tight">Pedidos Kiosco</h2>
@@ -1811,7 +1949,7 @@ async function renderKioskManagerView(container) {
             </div>
         </div>
     </div>
-  `;
+    `;
 
   // Fetch pending orders from Kiosco
   const { data: orders, error } = await supabase
@@ -1824,7 +1962,7 @@ async function renderKioskManagerView(container) {
   const listContainer = document.getElementById('kiosk-pending-list');
   if (error) {
     listContainer.innerHTML = `
-      <div class="col-span-full bg-red-50 text-red-600 p-8 rounded-[2.5rem] border border-red-100 flex items-center gap-4">
+    <div class="col-span-full bg-red-50 text-red-600 p-8 rounded-[2.5rem] border border-red-100 flex items-center gap-4">
          <span class="text-4xl">⚠️</span>
          <div>
             <p class="font-black uppercase text-sm">Error de Conexión</p>
@@ -1837,101 +1975,45 @@ async function renderKioskManagerView(container) {
 
   if (!orders || orders.length === 0) {
     listContainer.innerHTML = `
-      <div class="col-span-full py-32 flex flex-col items-center justify-center text-gray-300 bg-white rounded-[3rem] border border-gray-100 shadow-sm animate-fade-in">
+    <div class="col-span-full py-32 flex flex-col items-center justify-center text-gray-300 bg-white rounded-[3rem] border border-gray-100 shadow-sm animate-fade-in">
             <div class="bg-gray-50 w-24 h-24 rounded-full flex items-center justify-center mb-6">
                 <span class="text-6xl">✨</span>
             </div>
             <p class="text-2xl font-black text-gray-800 tracking-tight">Todo despejado</p>
             <p class="font-bold text-xs uppercase tracking-widest text-gray-400 mt-2">No hay pedidos esperando aprobación</p>
         </div>
-      `;
+    `;
     return;
   }
 
   listContainer.innerHTML = orders.map(order => {
     const time = new Date(order.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     const itemsHtml = order.order_items.map(item => `
-      <div class="flex justify-between items-center py-3 border-b border-gray-50 last:border-0 group/item">
+    <div class="flex justify-between items-center py-3 border-b border-gray-50 last:border-0 group/item">
             <div class="flex items-center gap-3">
                <span class="w-8 h-8 rounded-xl bg-gray-50 flex items-center justify-center text-xs font-black text-gray-800 group-hover/item:bg-primary group-hover/item:text-white transition-colors">${item.quantity}</span>
                <span class="text-sm font-bold text-gray-600 capitalize">${(item.products?.name || 'Producto').toLowerCase()}</span>
             </div>
             <span class="font-black text-sm text-gray-800">Bs. ${(item.price_at_sale * item.quantity).toFixed(2)}</span>
         </div>
-      `).join('');
+    `).join('');
 
     return `
-      <div class="bg-white rounded-[2.5rem] shadow-sm hover:shadow-2xl transition-all duration-500 border border-gray-100 overflow-hidden flex flex-col group animate-fade-in-up">
-            <!-- Header Card -->
-            <div class="p-8 border-b border-gray-50 flex justify-between items-start bg-gradient-to-br from-white to-gray-50/50">
-                <div>
-                   <div class="flex items-center gap-2 mb-2">
-                      <span class="px-3 py-1 bg-black text-white text-[9px] font-black rounded-lg uppercase tracking-widest">
-                        #${String(order.id).slice(-4)}
-                      </span>
-                      <span class="${order.order_type === 'mesa' ? 'bg-blue-100 text-blue-600' : 'bg-orange-100 text-orange-600'} px-3 py-1 text-[9px] font-black rounded-lg uppercase tracking-widest">
-                        ${order.order_type === 'mesa' ? '🍴 Local' : '🥡 Llevar'}
-                      </span>
-                   </div>
-                   <h3 class="text-2xl font-black text-gray-800 leading-tight capitalize">${(order.customer_name || 'Sin Nombre').toLowerCase()}</h3>
-                   <div class="flex items-center gap-2 mt-1">
-                      <span class="text-xs text-gray-400 font-bold uppercase tracking-widest">🕒 ${time}</span>
-                   </div>
-                </div>
-                <div class="text-right">
-                   <p class="text-[10px] text-gray-400 font-black uppercase tracking-widest mb-1">Por Cobrar</p>
-                   <p class="text-3xl font-black text-primary">Bs. ${order.total_amount.toFixed(2)}</p>
-                </div>
-            </div>
-            
-            <!-- Items Area -->
-            <div class="p-8 flex-1">
-                <div class="mb-4 flex items-center justify-between">
-                   <h4 class="text-[10px] font-black text-gray-300 uppercase tracking-[0.2em]">Detalle del Pedido</h4>
-                   <span class="h-px bg-gray-100 flex-1 ml-4"></span>
-                </div>
-                <div class="space-y-1">
-                   ${itemsHtml}
-                </div>
-            </div>
-            
-            <!-- Actions Area -->
-            <div class="p-6 bg-gray-50/50 border-t border-gray-50 flex flex-col gap-3">
-                <div class="flex items-center justify-between mb-1">
-                   <span class="text-[9px] font-black text-gray-300 uppercase tracking-widest">Registrar Pago</span>
-                   <div class="h-px bg-gray-100 flex-1 ml-4"></div>
-                </div>
-                <div class="grid grid-cols-5 gap-3">
-                    <button onclick="rejectKioskOrder('${order.id}')" 
-                            class="col-span-1 bg-white hover:bg-red-50 text-red-300 hover:text-red-500 p-4 rounded-2xl border border-gray-200 transition-all active:scale-95 flex justify-center items-center shadow-sm" title="Rechazar Pedido">
-                       <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                       </svg>
-                    </button>
-                    <button id="approve-cash-${order.id}" 
-                            onclick="approveKioskOrder('${order.id}', 'cash')" 
-                            class="col-span-2 bg-green-500 hover:bg-green-600 text-white font-black py-4 rounded-2xl shadow-lg shadow-green-500/10 transition hover:scale-[1.02] active:scale-95 flex flex-col justify-center items-center gap-1">
-                       <span class="text-xl">💵</span>
-                       <span class="uppercase tracking-widest text-[9px]">Efectivo</span>
-                    </button>
-                    <button id="approve-qr-${order.id}" 
-                            onclick="approveKioskOrder('${order.id}', 'qr')" 
-                            class="col-span-2 bg-blue-500 hover:bg-blue-600 text-white font-black py-4 rounded-2xl shadow-lg shadow-blue-500/10 transition hover:scale-[1.02] active:scale-95 flex flex-col justify-center items-center gap-1">
-                       <span class="text-xl">📱</span>
-                       <span class="uppercase tracking-widest text-[9px]">Cobro QR</span>
-                    </button>
-                </div>
-            </div>
+    <div class="col-span-1 flex items-center justify-center">
+            <span class="text-gray-300 font-bold text-xs uppercase tracking-widest text-center">Acciones<br>Rápidas</span>
         </div>
-      `;
+      </div>
+    </div>
+        </div>
+    `;
   }).join('');
 }
 
 // Approval Logic
 window.approveKioskOrder = async (orderId, method = 'cash') => {
-  const btnId = method === 'cash' ? `approve-cash-${orderId}` : `approve-qr-${orderId}`;
+  const btnId = method === 'cash' ? `approve - cash - ${orderId} ` : `approve - qr - ${orderId} `;
   const btn = document.getElementById(btnId);
-  const otherBtnId = method === 'cash' ? `approve-qr-${orderId}` : `approve-cash-${orderId}`;
+  const otherBtnId = method === 'cash' ? `approve - qr - ${orderId} ` : `approve - cash - ${orderId} `;
   const otherBtn = document.getElementById(otherBtnId);
 
   if (btn) {
@@ -1941,7 +2023,7 @@ window.approveKioskOrder = async (orderId, method = 'cash') => {
     btn.innerHTML = `<div class="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>`;
   }
 
-  if (!confirm(`¿Confirmar pago con ${method.toUpperCase()} y finalizar pedido?`)) {
+  if (!confirm(`¿Confirmar pago con ${method.toUpperCase()} y finalizar pedido ? `)) {
     if (btn) {
       btn.disabled = false;
       if (otherBtn) otherBtn.disabled = false;
@@ -2002,6 +2084,16 @@ window.approveKioskOrder = async (orderId, method = 'cash') => {
       btn.innerHTML = `💰 COBRAR Y FINALIZAR`;
     }
   } else {
+    // 6. RECORD CASH MOVE IF METHOD IS CASH
+    if (method === 'cash') {
+      try {
+        await addCashMove('sale', ticketOrder.total_amount, `Venta Kiosco #${numericId} (Aprobada)`);
+      } catch (cmErr) {
+        console.error("Error al registrar movimiento de caja kiosco:", cmErr);
+        showToast('⚠️ Pedido OK, pero error al registrar en caja', 'warning');
+      }
+    }
+
     showToast('🚀 Pedido Finalizado y Pagado', 'success');
     // Using setView ensures a complete re-render and state reset
     setView('kiosk-orders');
