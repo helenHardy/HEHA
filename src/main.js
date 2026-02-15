@@ -894,6 +894,13 @@ window.setPosPaymentMethod = (method) => {
   renderCartList();
 };
 
+window.toggleAutoPrint = () => {
+  store.autoPrint = !store.autoPrint;
+  const sidebar = document.getElementById('pos-sidebar');
+  if (sidebar) sidebar.innerHTML = renderCartUI();
+  renderCartList();
+};
+
 window.setView = async (view) => {
   if ((view === 'products' || view === 'reports') && store.user.role !== 'admin') {
     return alert('Acceso Denegado: Solo Administradores.');
@@ -957,6 +964,20 @@ function renderCartUI() {
                 📱 QR / TRANSF.
               </button>
             </div>
+          </div>
+
+          <!-- Print Toggle -->
+          <div class="flex items-center justify-between bg-gray-50 p-3 rounded-2xl border border-gray-100">
+             <div class="flex items-center gap-2">
+                <span class="text-lg">${store.autoPrint ? '🖨️' : '🚫'}</span>
+                <div>
+                   <p class="text-[10px] font-black text-gray-800 uppercase tracking-tighter">Imprimir Ticket</p>
+                   <p class="text-[9px] text-gray-400 font-bold uppercase tracking-widest">${store.autoPrint ? 'Activado' : 'Desactivado'}</p>
+                </div>
+             </div>
+             <button onclick="window.toggleAutoPrint()" class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${store.autoPrint ? 'bg-primary' : 'bg-gray-200'}">
+                <span class="inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${store.autoPrint ? 'translate-x-6' : 'translate-x-1'}"></span>
+             </button>
           </div>
         </div>
         ` : ''}
@@ -1261,8 +1282,12 @@ window.handleCheckout = async (directPrint = false) => {
   const ticketHTML = generateReceiptHTML(order, store.cart);
 
   if (directPrint) {
-    import('./utils/printer.js').then(m => m.printTicket(ticketHTML));
-    showToast('⚡ ¡Imprimiendo Ticket y Guardado!');
+    if (store.autoPrint) {
+      import('./utils/printer.js').then(m => m.printTicket(ticketHTML));
+      showToast('⚡ ¡Imprimiendo Ticket y Guardado!');
+    } else {
+      showToast('✅ ¡Venta Registrada!');
+    }
   } else {
     showTicketPreview(ticketHTML, order, [...store.cart]);
   }
@@ -1911,7 +1936,7 @@ async function renderOrdersHistory(container) {
   const { data: orders, error } = await supabase
     .from('orders')
     .select('*, order_items(*, products(*))')
-    .gte('created_at', today + 'T00:00:00')
+    .gte('created_at', today + 'T00:00:00-04:00')
     .order('created_at', { ascending: false });
 
   if (!error) {

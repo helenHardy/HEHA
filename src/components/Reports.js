@@ -23,15 +23,15 @@ export async function getDailyReport(targetDate = null) {
         .from('orders')
         .select('*, order_items(*)')
         .eq('status', 'completed')
-        .gte('created_at', startDate + 'T00:00:00')
-        .lt('created_at', queryEndDetails + 'T00:00:00');
+        .gte('created_at', startDate + 'T00:00:00-04:00')
+        .lt('created_at', queryEndDetails + 'T00:00:00-04:00');
 
     // 2. Fetch Expenses (Daily & Fixed)
     const { data: expenses } = await supabase
         .from('expenses')
         .select('*')
-        .gte('created_at', startDate + 'T00:00:00')
-        .lt('created_at', queryEndDetails + 'T00:00:00');
+        .gte('created_at', startDate + 'T00:00:00-04:00')
+        .lt('created_at', queryEndDetails + 'T00:00:00-04:00');
 
     let dailyExpenses = 0;
     let fixedExpenses = 0;

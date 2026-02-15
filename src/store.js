@@ -11,6 +11,7 @@ export const store = {
     orderType: 'mesa', // mesa, llevar, whatsapp
     posPaymentMethod: 'cash', // cash, qr
     whatsappDetails: { phone: '', location: '', advance: 0, paymentMethod: 'qr' },
+    autoPrint: false, // New: Toggle for automatic printing
 
     // UI State
     uiState: {
