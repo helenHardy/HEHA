@@ -2014,22 +2014,65 @@ async function renderKioskManagerView(container) {
   listContainer.innerHTML = orders.map(order => {
     const time = new Date(order.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     const itemsHtml = order.order_items.map(item => `
-    <div class="flex justify-between items-center py-3 border-b border-gray-50 last:border-0 group/item">
+        <div class="flex justify-between items-center py-3 border-b border-gray-50 last:border-0 group/item">
             <div class="flex items-center gap-3">
-               <span class="w-8 h-8 rounded-xl bg-gray-50 flex items-center justify-center text-xs font-black text-gray-800 group-hover/item:bg-primary group-hover/item:text-white transition-colors">${item.quantity}</span>
-               <span class="text-sm font-bold text-gray-600 capitalize">${(item.products?.name || 'Producto').toLowerCase()}</span>
+               <span class="w-8 h-8 rounded-xl bg-gray-50 flex items-center justify-center text-[10px] font-black text-gray-800 group-hover/item:bg-primary group-hover/item:text-white transition-colors">
+                 ${item.quantity}x
+               </span>
+               <span class="text-xs font-bold text-gray-600 capitalize">${(item.products?.name || 'Producto').toLowerCase()}</span>
             </div>
-            <span class="font-black text-sm text-gray-800">Bs. ${(item.price_at_sale * item.quantity).toFixed(2)}</span>
+            <span class="font-black text-xs text-gray-800">Bs. ${(item.price_at_sale * item.quantity).toFixed(2)}</span>
         </div>
     `).join('');
 
     return `
-    <div class="col-span-1 flex items-center justify-center">
-            <span class="text-gray-300 font-bold text-xs uppercase tracking-widest text-center">Acciones<br>Rápidas</span>
+    <div class="bg-white rounded-[2.5rem] shadow-sm hover:shadow-xl transition-all duration-500 border border-gray-100 overflow-hidden flex flex-col group animate-fade-in-up">
+        <!-- Card Header -->
+        <div class="p-6 border-b border-gray-50 flex justify-between items-start">
+            <div>
+                <div class="flex items-center gap-2 mb-2">
+                  <span class="px-2 py-1 bg-primary text-white text-[8px] font-black rounded-lg uppercase tracking-widest">PEDIDO #${String(order.id).slice(-4)}</span>
+                  <span class="bg-gray-100 text-gray-400 px-2 py-1 text-[8px] font-black rounded-lg uppercase tracking-widest">🕒 ${time}</span>
+                </div>
+                <h3 class="text-2xl font-[1000] text-gray-900 tracking-tighter capitalize truncate w-full">${(order.customer_name || 'Cliente').toLowerCase()}</h3>
+            </div>
         </div>
-      </div>
+
+        <!-- Items Area -->
+        <div class="p-6 flex-1 bg-gray-50/30 overflow-y-auto max-h-60 scrollbar-hide">
+            <div class="space-y-1">
+                ${itemsHtml}
+            </div>
+        </div>
+
+        <!-- Footer & Actions -->
+        <div class="p-6 bg-white border-t border-gray-50 space-y-4">
+            <div class="flex justify-between items-center mb-2">
+                <span class="text-[10px] font-black text-gray-400 uppercase tracking-widest">Total a Cobrar</span>
+                <span class="text-3xl font-black text-gray-800">Bs. ${order.total_amount.toFixed(2)}</span>
+            </div>
+            
+            <div class="grid grid-cols-2 gap-3">
+                <button onclick="window.approveKioskOrder('${order.id}', 'cash')" 
+                        id="approve-cash-${order.id}"
+                        class="flex flex-col items-center justify-center gap-1 py-4 bg-green-500 hover:bg-green-600 text-white rounded-[1.5rem] transition active:scale-95 shadow-lg shadow-green-500/20">
+                    <span class="text-2xl">💵</span>
+                    <span class="uppercase tracking-widest text-[9px] font-black">Cobro Efectivo</span>
+                </button>
+                <button onclick="window.approveKioskOrder('${order.id}', 'qr')" 
+                        id="approve-qr-${order.id}"
+                        class="flex flex-col items-center justify-center gap-1 py-4 bg-blue-500 hover:bg-blue-600 text-white rounded-[1.5rem] transition active:scale-95 shadow-lg shadow-blue-500/20">
+                    <span class="text-2xl">📱</span>
+                    <span class="uppercase tracking-widest text-[9px] font-black">Cobro QR</span>
+                </button>
+            </div>
+
+            <button onclick="window.rejectKioskOrder('${order.id}')" 
+                    class="w-full py-3 bg-gray-50 hover:bg-red-50 text-gray-300 hover:text-red-400 rounded-xl transition font-black text-[9px] uppercase tracking-[0.2em] border border-transparent hover:border-red-100">
+                Rechazar / Eliminar Pedido
+            </button>
+        </div>
     </div>
-        </div>
     `;
   }).join('');
 }

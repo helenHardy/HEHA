@@ -21,7 +21,7 @@ export async function getDailyReport(targetDate = null) {
     // 1. Fetch Orders (Completed only)
     const { data: orders } = await supabase
         .from('orders')
-        .select('*, order_items(*)')
+        .select('*, order_items(*) ')
         .eq('status', 'completed')
         .gte('created_at', startDate + 'T00:00:00-04:00')
         .lt('created_at', queryEndDetails + 'T00:00:00-04:00');
@@ -44,7 +44,7 @@ export async function getDailyReport(targetDate = null) {
     }
 
     // 3. Fetch Products for Cost Analysis
-    const { data: allProducts } = await supabase.from('products').select('id, name, cost');
+    const { data: allProducts } = await supabase.from('products').select('id, name, cost, price');
     const productMap = {};
     if (allProducts) allProducts.forEach(p => productMap[String(p.id)] = p);
 
@@ -72,9 +72,24 @@ export async function getDailyReport(targetDate = null) {
                     const p = productMap[String(item.product_id)];
                     if (p) {
                         totalCost += (parseFloat(p.cost) || 0) * q;
-                        productSales[p.name] = (productSales[p.name] || 0) + q;
+
+                        if (!productSales[p.name]) {
+                            productSales[p.name] = { name: p.name, qty: 0, revenue: 0 };
+                        }
+                        productSales[p.name].qty += q;
+                        const unitPrice = parseFloat(item.price_at_sale) || parseFloat(p.price) || 0;
+                        productSales[p.name].revenue += unitPrice * q;
                     }
                 });
+            }
+        });
+    }
+
+    // 4. Initialize all products in productSales to ensure they appear even with 0 sales
+    if (allProducts) {
+        allProducts.forEach(p => {
+            if (!productSales[p.name]) {
+                productSales[p.name] = { name: p.name, qty: 0, revenue: 0 };
             }
         });
     }
@@ -82,10 +97,8 @@ export async function getDailyReport(targetDate = null) {
     const grossProfit = totalSales - totalCost;
     const netProfit = grossProfit - dailyExpenses - fixedExpenses;
 
-    const topProducts = Object.entries(productSales)
-        .map(([name, qty]) => ({ name, qty }))
-        .sort((a, b) => b.qty - a.qty)
-        .slice(0, 5);
+    const topProducts = Object.values(productSales)
+        .sort((a, b) => b.qty - a.qty);
 
     return {
         totalSales,
@@ -159,18 +172,27 @@ export async function renderReports(container, dateParam = null) {
           <div class="lg:col-span-2 space-y-8">
               <!-- TOP PRODUCTS -->
               <div class="bg-white p-8 rounded-3xl shadow-sm border border-gray-100">
-                  <h3 class="text-lg font-black text-gray-800 mb-6 uppercase tracking-tight">Productos Estrella</h3>
-                  <div class="space-y-4">
+                  <h3 class="text-lg font-black text-gray-800 mb-6 uppercase tracking-tight">Ventas por Producto</h3>
+                  <div class="space-y-4 max-h-[600px] overflow-y-auto pr-2 custom-scrollbar">
                       ${report.topProducts.map(p => {
-        const percent = (p.qty / (report.topProducts[0]?.qty || 1)) * 100;
+        const maxQty = report.topProducts[0]?.qty || 1;
+        const percent = (p.qty / maxQty) * 100;
         return `
-                          <div class="space-y-1">
-                              <div class="flex justify-between text-sm font-bold">
-                                  <span class="text-gray-600">${p.name}</span>
-                                  <span>${p.qty} u.</span>
+                          <div class="space-y-2 group p-2 hover:bg-gray-50 rounded-xl transition">
+                              <div class="flex justify-between items-end">
+                                  <div class="flex flex-col">
+                                      <span class="text-xs font-black text-gray-800 uppercase tracking-tight">${p.name}</span>
+                                      <span class="text-[10px] text-gray-400 font-bold italic">Bs. ${p.revenue.toFixed(2)} en ventas</span>
+                                  </div>
+                                  <div class="text-right flex flex-col items-end">
+                                      <div class="flex items-baseline gap-1">
+                                          <span class="text-lg font-black text-black">${p.qty}</span>
+                                          <span class="text-[10px] font-black text-gray-400 uppercase">Uni.</span>
+                                      </div>
+                                  </div>
                               </div>
-                              <div class="h-2 bg-gray-100 rounded-full overflow-hidden">
-                                  <div class="h-full bg-black rounded-full" style="width: ${percent}%"></div>
+                              <div class="h-2 bg-gray-100 rounded-full overflow-hidden border border-gray-50">
+                                  <div class="h-full bg-black rounded-full transition-all duration-700 ease-out" style="width: ${percent}%"></div>
                               </div>
                           </div>
                          `;
@@ -187,24 +209,33 @@ export async function renderReports(container, dateParam = null) {
                   <div class="overflow-x-auto">
                       <table class="w-full text-left">
                           <thead class="text-[10px] font-black text-gray-400 uppercase border-b border-gray-50">
-                              <tr>
+                               <tr>
                                   <th class="p-4">ID</th>
                                   <th class="p-4">Cliente</th>
+                                  <th class="p-4">Detalle</th>
                                   <th class="p-4">Pago</th>
                                   <th class="p-4 text-right">Total</th>
                               </tr>
                           </thead>
                           <tbody class="text-sm">
-                              ${report.orders.map(o => `
+                              ${report.orders.map(o => {
+        const items = o.order_items?.map(item => {
+            const p = report.productMap[String(item.product_id)];
+            return `<span class="bg-gray-50 text-gray-500 border border-gray-100 px-1.5 py-0.5 rounded text-[8px] font-bold uppercase whitespace-nowrap">${item.quantity}x ${p ? p.name : 'Desc.'}</span>`;
+        }).join(' ') || '<span class="text-gray-300 italic text-[10px]">Sin detalle</span>';
+
+        return `
                                   <tr class="border-b border-gray-50 hover:bg-gray-50 transition">
                                       <td class="p-4 font-mono text-xs text-gray-400">#${String(o.id).slice(-4)}</td>
                                       <td class="p-4 font-bold text-gray-700 capitalize">${(o.customer_name || 'Anónimo').toLowerCase()}</td>
+                                      <td class="p-4 flex flex-wrap gap-1 max-w-sm">${items}</td>
                                       <td class="p-4">
                                           <span class="text-[10px] font-black uppercase px-2 py-1 rounded bg-gray-100 text-gray-500">${o.payment_method}</span>
                                       </td>
                                       <td class="p-4 text-right font-black text-gray-800">Bs. ${o.total_amount.toFixed(2)}</td>
                                   </tr>
-                              `).join('') || '<tr><td colspan="4" class="p-8 text-center text-gray-400 italic font-medium">Sin datos para esta fecha.</td></tr>'}
+                              `;
+    }).join('') || '<tr><td colspan="5" class="p-8 text-center text-gray-400 italic font-medium">Sin datos para esta fecha.</td></tr>'}
                           </tbody>
                       </table>
                   </div>
