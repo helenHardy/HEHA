@@ -160,12 +160,14 @@ async function renderMenuScreen(container) {
                  ` : ''}
                  
                  <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-x-8 gap-y-12 pt-4">
-                    ${filteredProducts.map(p => `
-                        <div class="bg-white rounded-[2rem] p-6 shadow-sm hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-2 cursor-pointer relative group border border-transparent hover:border-gray-100" onclick="kioskOpenModal(${p.id})">
+                     ${filteredProducts.map(p => {
+        const outOfStock = p.track_stock && p.stock <= 0;
+        return `
+                        <div class="bg-white rounded-[2rem] p-6 shadow-sm hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-2 cursor-pointer relative group border border-transparent hover:border-gray-100" onclick="${outOfStock ? '' : `kioskOpenModal(${p.id})`}">
                              <!-- Image floating out of card effect -->
                              <div class="h-48 -mt-12 mb-4 relative flex items-center justify-center filter drop-shadow-xl group-hover:drop-shadow-2xl transition-all duration-500">
-                                 <img src="${p.image_url}" class="max-h-full max-w-full object-contain transform group-hover:scale-110 transition-transform duration-500" onerror="this.src='https://placehold.co/300x300?text=Comida'">
-                                 ${p.price < 20 ? '<div class="absolute top-0 right-0 bg-red-500 text-white text-xs font-bold px-2 py-1 rounded-full animate-pulse">OFERTA</div>' : ''}
+                                 <img src="${p.image_url}" class="max-h-full max-w-full object-contain transform group-hover:scale-110 transition-transform duration-500 ${outOfStock ? 'grayscale opacity-50' : ''}" onerror="this.src='https://placehold.co/300x300?text=Comida'">
+                                 ${outOfStock ? '<div class="absolute inset-0 flex items-center justify-center"><span class="bg-red-600 text-white text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-widest animate-pulse">Agotado</span></div>' : p.price < 20 ? '<div class="absolute top-0 right-0 bg-red-500 text-white text-xs font-bold px-2 py-1 rounded-full animate-pulse">OFERTA</div>' : ''}
                              </div>
                              
                              <div class="text-center">
@@ -174,12 +176,13 @@ async function renderMenuScreen(container) {
                                     <span class="text-lg text-gray-400 align-top font-bold mr-1">Bs.</span>${Math.floor(p.price)}<span class="text-lg align-top ml-1">${(p.price % 1).toFixed(2).substring(1)}</span>
                                  </div>
                                  
-                                 <button class="w-full bg-[#f4f4f4] text-gray-800 font-bold py-3 rounded-xl group-hover:bg-yellow-400 group-hover:text-black transition-colors duration-300">
-                                    Personalizar
+                                 <button class="w-full ${outOfStock ? 'bg-gray-100 text-gray-400' : 'bg-[#f4f4f4] text-gray-800 group-hover:bg-yellow-400 group-hover:text-black'} font-bold py-3 rounded-xl transition-colors duration-300" ${outOfStock ? 'disabled' : ''}>
+                                    ${outOfStock ? 'Existencia Agotada' : 'Personalizar'}
                                  </button>
                              </div>
                         </div>
-                    `).join('')}
+                     `;
+    }).join('')}
                  </div>
             </div>
             
@@ -230,6 +233,11 @@ async function renderMenuScreen(container) {
             const qtyInput = document.getElementById('modal-qty');
             const qty = qtyInput ? parseInt(qtyInput.innerText) : 1;
 
+            if (p.track_stock && p.stock < qty) {
+                showKioskToast(`⚠️ Solo quedan ${p.stock} unidades`);
+                return;
+            }
+
             store.addToCart(p, qty);
 
             kioskState.modalProduct = null;
@@ -258,7 +266,14 @@ function renderProductModal(container) {
             
             <div class="p-6 md:p-10 flex-1 flex flex-col bg-white rounded-t-[3rem] -mt-10 shadow-[0_-10px_40px_rgba(0,0,0,0.05)] relative z-0 overflow-y-auto">
                <div class="flex flex-col md:flex-row justify-between items-start mb-4 gap-2">
-                  <h2 class="text-3xl md:text-5xl font-black text-gray-800 leading-tight uppercase tracking-tight">${p.name}</h2>
+                  <div class="flex-1">
+                      <h2 class="text-3xl md:text-5xl font-black text-gray-800 leading-tight uppercase tracking-tight">${p.name}</h2>
+                      ${p.track_stock ? `
+                          <span class="bg-gray-100 text-gray-400 text-[10px] font-black px-3 py-1.5 rounded-full border border-gray-200 uppercase tracking-widest mt-2 inline-block">
+                              ${p.stock > 0 ? `${p.stock} Disponibles` : '<span class="text-red-500">Sin Existencia</span>'}
+                          </span>
+                      ` : ''}
+                  </div>
                   <span class="text-3xl md:text-5xl font-black text-yellow-500 whitespace-nowrap drop-shadow-sm">
                     <span class="text-xl md:text-2xl text-gray-400 font-bold mr-1">Bs.</span>${p.price}
                   </span>
@@ -274,8 +289,10 @@ function renderProductModal(container) {
                              <button onclick="updateModalQty(1)" class="w-12 h-12 md:w-16 md:h-16 bg-transparent text-gray-400 hover:text-green-500 rounded-xl text-3xl md:text-4xl font-black transition">+</button>
                         </div>
                         
-                        <button onclick="kioskConfirmAdd(${p.id})" class="w-full sm:flex-1 bg-black text-white font-black text-xl md:text-2xl py-5 md:py-6 rounded-2xl shadow-xl hover:bg-gray-900 transform active:scale-95 transition-all flex items-center justify-center gap-3">
-                            <span>AGREGAR</span>
+                        <button onclick="kioskConfirmAdd(${p.id})" 
+                                ${p.track_stock && p.stock <= 0 ? 'disabled' : ''}
+                                class="w-full sm:flex-1 ${p.track_stock && p.stock <= 0 ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-black text-white hover:bg-gray-900 shadow-xl active:scale-95'} font-black text-xl md:text-2xl py-5 md:py-6 rounded-2xl transition-all flex items-center justify-center gap-3">
+                            <span>${p.track_stock && p.stock <= 0 ? 'AGOTADO' : 'AGREGAR'}</span>
                             <span class="bg-white/20 px-3 py-1 rounded-lg text-lg">➔</span>
                         </button>
                     </div>

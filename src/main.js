@@ -9,9 +9,10 @@ import { renderProductManager } from './components/ProductManager.js';
 import { renderKiosk } from './components/Kiosk.js';
 import { renderDashboard } from './components/Dashboard.js';
 import { renderKitchenView } from './components/Kitchen.js';
+import { renderInventoryView } from './components/Inventory.js';
 
 // Basic Router State
-let currentView = 'dashboard'; // dashboard, pos, reports, products, users, orders, kiosk-orders, cash, kitchen
+let currentView = 'dashboard'; // dashboard, pos, reports, products, users, orders, kiosk-orders, cash, kitchen, inventory
 
 const app = document.querySelector('#app');
 
@@ -489,6 +490,7 @@ async function renderAuthenticatedLayout() {
              ${store.user.role === 'admin' ? `
                <div class="pt-4 pb-2 text-[10px] font-black text-gray-500 uppercase tracking-[0.2em] px-4 transition-opacity duration-300 ${isCollapsed ? 'md:hidden' : 'opacity-100'}">Admin</div>
                ${renderNavLink('products', '🍔', 'Productos', isCollapsed)}
+               ${renderNavLink('inventory', '📦', 'Inventario', isCollapsed)}
                ${renderNavLink('reports', '📊', 'Reportes', isCollapsed)}
                ${renderNavLink('users', '👥', 'Usuarios', isCollapsed)}
                ${renderNavLink('kiosk', '🖥️', 'Modo Kiosco', isCollapsed)}
@@ -667,6 +669,8 @@ async function renderAuthenticatedLayout() {
     renderKioskManagerView(pageContent);
   } else if (currentView === 'kitchen') {
     renderKitchenView(pageContent);
+  } else if (currentView === 'inventory') {
+    renderInventoryView(pageContent);
   } else if (currentView === 'cash') {
     // ---- CASHIER VIEW LOGIC ----
 
@@ -757,7 +761,8 @@ function getViewTitle(view) {
     'reports': 'Reportes y Estadísticas',
     'users': 'Gestión de Usuarios',
     'cash': 'Gestión de Caja',
-    'kitchen': 'Control de Cocina'
+    'kitchen': 'Control de Cocina',
+    'inventory': 'Inventario de Stock'
   };
   return titles[view] || 'Dashboard';
 }
@@ -902,11 +907,11 @@ window.toggleAutoPrint = () => {
 };
 
 window.setView = async (view) => {
-  if ((view === 'products' || view === 'reports') && store.user.role !== 'admin') {
+  if ((view === 'products' || view === 'reports' || view === 'inventory') && store.user.role !== 'admin') {
     return alert('Acceso Denegado: Solo Administradores.');
   }
   currentView = view;
-  await renderAuthenticatedLayout(); // Re-render logic needs to handle async for some views now
+  await renderAuthenticatedLayout();
 };
 
 window.setOrderType = (type) => {
@@ -1167,8 +1172,12 @@ window.confirmQty = (productId) => {
 
   const p = allProducts.find(x => x.id === productId);
   if (p) {
-    // We modify store.js's addToCart if necessary or just call it in a loop
-    // But store.addToCart already takes a second optional parameter 'quantity'
+    // Stock Validation
+    if (p.track_stock && p.stock < qty) {
+      showToast(`❌ Stock insuficiente: solo hay ${p.stock} unidades de ${p.name.toLowerCase()}`, 'error');
+      return;
+    }
+
     store.addToCart(p, qty);
     renderCartList();
     updateTotals();

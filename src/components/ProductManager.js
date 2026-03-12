@@ -111,6 +111,20 @@ export async function renderProductManager(container) {
                    </select>
               </div>
 
+              <!-- Stock Management -->
+              <div class="col-span-1">
+                   <label class="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">Controlar Stock</label>
+                   <div class="flex items-center gap-4 bg-gray-50 px-6 py-4 rounded-2xl h-[58px]">
+                       <input type="checkbox" id="prod-track-stock" class="w-5 h-5 accent-black">
+                       <span class="text-xs font-bold text-gray-600 uppercase">Activar</span>
+                   </div>
+              </div>
+
+              <div class="col-span-1">
+                   <label class="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 font-mono">Stock Actual</label>
+                   <input type="number" id="prod-stock" placeholder="0" class="w-full px-6 py-4 rounded-2xl bg-gray-50 border-none focus:ring-2 focus:ring-orange-500/20 outline-none font-black text-xl text-orange-500">
+              </div>
+
               <div class="col-span-2">
                    <label class="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">Descripción Corta</label>
                    <textarea id="prod-desc" placeholder="Detalles de los ingredientes o preparación..." class="w-full px-6 py-4 rounded-2xl bg-gray-50 border-none focus:ring-2 focus:ring-primary/20 outline-none font-medium text-sm scrollbar-hide" rows="3"></textarea>
@@ -137,6 +151,7 @@ export async function renderProductManager(container) {
                   <th class="py-6 px-10 text-[10px] font-black text-gray-400 uppercase tracking-widest">Plato</th>
                   <th class="py-6 px-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">Categoría</th>
                   <th class="py-6 px-4 text-[10px] font-black text-gray-400 uppercase tracking-widest text-right">Costo</th>
+                  <th class="py-6 px-4 text-[10px] font-black text-gray-400 uppercase tracking-widest text-right">Stock</th>
                   <th class="py-6 px-4 text-[10px] font-black text-gray-400 uppercase tracking-widest text-right">Precio</th>
                   <th class="py-6 px-10 text-[10px] font-black text-gray-400 uppercase tracking-widest text-right">Acciones</th>
                 </tr>
@@ -163,12 +178,30 @@ export async function renderProductManager(container) {
                     </td>
                     <td class="py-6 px-4 text-right">
                        <div class="flex flex-col items-end">
+                          <p class="font-black text-lg tabular-nums ${p.track_stock && p.stock <= 5 ? 'text-red-500' : 'text-gray-800'}">
+                            ${p.track_stock ? p.stock : '∞'}
+                          </p>
+                          <span class="text-[9px] font-black uppercase tracking-tighter ${p.track_stock ? 'text-gray-400' : 'text-blue-400'}">
+                            ${p.track_stock ? (p.stock <= 5 ? '¡BAJO!' : 'STOCK') : 'SIN LÍMITE'}
+                          </span>
+                       </div>
+                    </td>
+                    <td class="py-6 px-4 text-right">
+                       <div class="flex flex-col items-end">
                           <p class="font-black text-gray-800 text-lg tabular-nums">Bs. ${p.price.toFixed(2)}</p>
                           <span class="text-[9px] font-black text-green-500 uppercase tracking-tighter">Profit Bs. ${(p.price - (p.cost || 0)).toFixed(2)}</span>
                        </div>
                     </td>
                     <td class="py-6 px-10 text-right">
                       <div class="flex justify-end gap-2">
+                        ${p.track_stock ? `
+                          <button class="w-8 h-8 flex items-center justify-center bg-green-50 text-green-600 rounded-lg hover:bg-green-500 hover:text-white transition active:scale-90" onclick="window.openRefillModal(${p.id})" title="Reponer Stock">
+                             ➕
+                          </button>
+                          <button class="w-8 h-8 flex items-center justify-center bg-red-50 text-red-600 rounded-lg hover:bg-red-500 hover:text-white transition active:scale-90" onclick="window.openWithdrawModal(${p.id})" title="Registrar Salida">
+                             📉
+                          </button>
+                        ` : ''}
                         <button class="w-10 h-10 flex items-center justify-center bg-white border border-gray-100 rounded-xl text-gray-400 hover:text-blue-500 hover:shadow-md transition active:scale-90" onclick="window.editProduct(${p.id})">
                            ✏️
                         </button>
@@ -290,6 +323,8 @@ export async function renderProductManager(container) {
     const price = document.getElementById('prod-price').value;
     const cost = document.getElementById('prod-cost').value;
     const category = document.getElementById('prod-category').value;
+    const track_stock = document.getElementById('prod-track-stock').checked;
+    const stock = document.getElementById('prod-stock').value;
     const image_url = document.getElementById('prod-image-url').value || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c';
     const description = document.getElementById('prod-desc').value;
 
@@ -303,6 +338,8 @@ export async function renderProductManager(container) {
       price: parseFloat(price),
       cost: parseFloat(cost) || 0,
       category,
+      track_stock,
+      stock: parseInt(stock) || 0,
       image_url,
       description
     };
@@ -335,6 +372,8 @@ export async function renderProductManager(container) {
       document.getElementById('prod-price').value = p.price;
       document.getElementById('prod-cost').value = p.cost;
       document.getElementById('prod-category').value = p.category || 'General';
+      document.getElementById('prod-track-stock').checked = p.track_stock || false;
+      document.getElementById('prod-stock').value = p.stock || 0;
       document.getElementById('prod-image-url').value = p.image_url;
       document.getElementById('prod-desc').value = p.description;
 
@@ -370,14 +409,139 @@ export async function renderProductManager(container) {
 }
 
 function clearFormFields() {
-  const ids = ['prod-id', 'prod-name', 'prod-price', 'prod-cost', 'prod-image-url', 'prod-desc'];
+  const ids = ['prod-id', 'prod-name', 'prod-price', 'prod-cost', 'prod-stock', 'prod-image-url', 'prod-desc'];
   ids.forEach(id => {
     const el = document.getElementById(id);
     if (el) el.value = '';
   });
+
+  const trackStock = document.getElementById('prod-track-stock');
+  if (trackStock) trackStock.checked = false;
 
   const preview = document.getElementById('prod-preview');
   const placeholder = document.getElementById('upload-placeholder');
   if (preview) preview.classList.add('hidden');
   if (placeholder) placeholder.classList.remove('hidden');
 }
+
+// Manual Stock Adjustments for Product Manager
+window.openRefillModal = async (id) => {
+  const { data: p } = await supabase.from('products').select('*').eq('id', id).single();
+  if (!p) return;
+
+  const modalHTML = `
+        <div id="refill-modal" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-[200] flex items-center justify-center p-4 animate-fade-in text-gray-800">
+            <div class="bg-white rounded-[2.5rem] w-full max-w-sm p-8 shadow-2xl text-center">
+                <div class="w-16 h-16 bg-green-50 text-green-500 rounded-2xl flex items-center justify-center text-3xl mx-auto mb-4">📈</div>
+                <h3 class="text-2xl font-black tracking-tight capitalize mb-1">Reponer: ${p.name.toLowerCase()}</h3>
+                <p class="text-[10px] text-gray-400 font-black uppercase tracking-widest">Añadir existencias al inventario</p>
+                
+                <div class="my-8">
+                    <p class="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Unidades a añadir</p>
+                    <input type="number" id="refill-qty" value="10" min="1" class="w-full text-center text-5xl font-black p-4 bg-gray-50 rounded-3xl border-2 border-transparent focus:border-green-500 focus:bg-white outline-none transition-all text-green-600">
+                    <p class="text-[10px] font-black text-gray-400 uppercase tracking-widest mt-2">Stock actual: ${p.stock}</p>
+                </div>
+
+                <div class="grid grid-cols-2 gap-4">
+                    <button onclick="document.getElementById('refill-modal').remove()" class="py-4 rounded-2xl font-black text-gray-400 hover:bg-gray-100 transition uppercase tracking-widest text-[10px]">Cancelar</button>
+                    <button id="btn-confirm-refill" class="py-4 bg-black text-white rounded-2xl font-black shadow-lg shadow-black/20 transition active:scale-95 uppercase tracking-widest text-[10px]">Confirmar Ingreso</button>
+                </div>
+            </div>
+        </div>
+    `;
+
+  const div = document.createElement('div');
+  div.innerHTML = modalHTML;
+  document.body.appendChild(div.firstElementChild);
+
+  document.getElementById('btn-confirm-refill').addEventListener('click', async () => {
+    const qty = parseInt(document.getElementById('refill-qty').value);
+    if (isNaN(qty) || qty <= 0) return showToast('Cantidad no válida', 'error');
+
+    const { error } = await supabase.from('products').update({ stock: (p.stock || 0) + qty }).eq('id', id);
+    if (error) showToast('Error al actualizar', 'error');
+    else {
+      showToast('✅ Inventario actualizado');
+      document.getElementById('refill-modal').remove();
+
+      // Refresh logic
+      if (window.setView) {
+        window.setView('products');
+      } else {
+        const container = document.getElementById('page-content');
+        if (container) renderProductManager(container);
+      }
+    }
+  });
+};
+
+window.openWithdrawModal = async (id) => {
+  const { data: p } = await supabase.from('products').select('*').eq('id', id).single();
+  if (!p) return;
+
+  const modalHTML = `
+        <div id="withdraw-modal" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-[200] flex items-center justify-center p-4 animate-fade-in text-gray-800">
+            <div class="bg-white rounded-[2.5rem] w-full max-w-sm p-8 shadow-2xl">
+                <div class="text-center mb-6">
+                    <div class="w-16 h-16 bg-red-50 text-red-500 rounded-2xl flex items-center justify-center text-3xl mx-auto mb-4">📉</div>
+                    <h3 class="text-2xl font-black tracking-tight capitalize mb-1">Salida: ${p.name.toLowerCase()}</h3>
+                    <p class="text-[10px] text-gray-400 font-black uppercase tracking-widest">Registrar merma, regalo o defecto</p>
+                </div>
+                
+                <div class="space-y-4 mb-8">
+                    <div>
+                        <label class="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Unidades a retirar</label>
+                        <input type="number" id="withdraw-qty" value="1" min="1" max="${p.stock}" class="w-full text-center text-4xl font-black p-4 bg-gray-50 rounded-2xl border-2 border-transparent focus:border-red-500 focus:bg-white outline-none transition-all text-red-500">
+                    </div>
+                    <div>
+                        <label class="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Motivo / Razón</label>
+                        <select id="withdraw-reason" class="w-full p-4 bg-gray-50 rounded-2xl border-none font-bold text-sm focus:ring-2 focus:ring-red-500/20 outline-none appearance-none cursor-pointer">
+                            <option value="defectuoso">Producto Defectuoso / Merma</option>
+                            <option value="regalo">Cortesía / Regalo</option>
+                            <option value="consumo_interno">Consumo Interno</option>
+                            <option value="otro">Otro Motivo</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-4">
+                    <button onclick="document.getElementById('withdraw-modal').remove()" class="py-4 rounded-2xl font-black text-gray-400 hover:bg-gray-100 transition uppercase tracking-widest text-[10px]">Cancelar</button>
+                    <button id="btn-confirm-withdraw" class="py-4 bg-red-500 text-white rounded-2xl font-black shadow-lg shadow-red-500/20 transition active:scale-95 uppercase tracking-widest text-[10px]">Confirmar Salida</button>
+                </div>
+            </div>
+        </div>
+    `;
+
+  const div = document.createElement('div');
+  div.innerHTML = modalHTML;
+  document.body.appendChild(div.firstElementChild);
+
+  document.getElementById('btn-confirm-withdraw').addEventListener('click', async () => {
+    const qtyString = document.getElementById('withdraw-qty').value;
+    const qty = parseInt(qtyString);
+    const reason = document.getElementById('withdraw-reason').value;
+
+    if (isNaN(qty) || qty <= 0) return showToast('Cantidad no válida', 'error');
+    if (qty > p.stock) return showToast('No puedes retirar más de lo que hay', 'error');
+
+    const { error } = await supabase
+      .from('products')
+      .update({ stock: p.stock - qty })
+      .eq('id', id);
+
+    if (error) showToast('Error al procesar salida', 'error');
+    else {
+      showToast(`📉 Salida registrada: -${qty} ${p.name}`);
+      document.getElementById('withdraw-modal').remove();
+
+      // Refresh logic
+      if (window.setView) {
+        window.setView('products');
+      } else {
+        const container = document.getElementById('page-content');
+        if (container) renderProductManager(container);
+      }
+    }
+  });
+};
+
