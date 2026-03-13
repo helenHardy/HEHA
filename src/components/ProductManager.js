@@ -4,6 +4,7 @@ export async function renderProductManager(container) {
   // 1. Fetch Products and Categories
   const { data: products } = await supabase.from('products').select('*').order('name');
   const { data: categories } = await supabase.from('categories').select('*').order('name');
+  const { data: ingredients } = await supabase.from('ingredients').select('*').order('name');
 
   // Ensure 'General' always exists in UI logic even if DB is empty (fallback)
   const categoryList = categories && categories.length > 0 ? categories : [{ name: 'General' }];
@@ -129,6 +130,23 @@ export async function renderProductManager(container) {
                    <label class="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">Descripción Corta</label>
                    <textarea id="prod-desc" placeholder="Detalles de los ingredientes o preparación..." class="w-full px-6 py-4 rounded-2xl bg-gray-50 border-none focus:ring-2 focus:ring-primary/20 outline-none font-medium text-sm scrollbar-hide" rows="3"></textarea>
               </div>
+
+              <!-- Recipe Section -->
+              <div class="col-span-2 mt-4 p-8 bg-gray-50 rounded-[2.5rem] border border-gray-100">
+                <div class="flex justify-between items-center mb-6">
+                  <div>
+                    <h4 class="font-black text-lg text-gray-800 tracking-tight">Receta / Insumos</h4>
+                    <p class="text-[10px] text-gray-400 font-bold uppercase tracking-widest">Descontar stock de ingredientes base</p>
+                  </div>
+                  <button type="button" id="btn-add-recipe-item" class="bg-white px-4 py-2 rounded-xl shadow-sm border border-gray-100 text-[10px] font-black uppercase tracking-widest hover:bg-gray-100 transition">
+                    + Agregar Insumo
+                  </button>
+                </div>
+                <div id="recipe-items-container" class="space-y-3">
+                  <!-- Injected by JS -->
+                </div>
+                <p id="no-recipe-msg" class="text-center py-4 text-gray-400 text-xs italic">Este producto no consume ingredientes base (ej. Refrescos)</p>
+              </div>
             </div>
           </div>
 
@@ -141,84 +159,188 @@ export async function renderProductManager(container) {
         </div>
       </div>
 
-      <!-- Products Grid/List -->
-      <div class="grid grid-cols-1 gap-6">
-        <div class="bg-white rounded-[3rem] shadow-sm border border-gray-100 overflow-hidden">
-          <div class="overflow-x-auto scrollbar-hide">
-            <table class="w-full text-left border-collapse">
-              <thead>
-                <tr class="bg-gray-50/50">
-                  <th class="py-6 px-10 text-[10px] font-black text-gray-400 uppercase tracking-widest">Plato</th>
-                  <th class="py-6 px-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">Categoría</th>
-                  <th class="py-6 px-4 text-[10px] font-black text-gray-400 uppercase tracking-widest text-right">Costo</th>
-                  <th class="py-6 px-4 text-[10px] font-black text-gray-400 uppercase tracking-widest text-right">Stock</th>
-                  <th class="py-6 px-4 text-[10px] font-black text-gray-400 uppercase tracking-widest text-right">Precio</th>
-                  <th class="py-6 px-10 text-[10px] font-black text-gray-400 uppercase tracking-widest text-right">Acciones</th>
-                </tr>
-              </thead>
-              <tbody class="divide-y divide-gray-50">
-                ${products ? products.map(p => `
-                  <tr class="group hover:bg-gray-50/50 transition-colors">
-                    <td class="py-6 px-10">
-                      <div class="flex items-center gap-6">
-                        <div class="h-16 w-16 rounded-2xl bg-gray-50 overflow-hidden flex-shrink-0 shadow-sm border border-gray-100 group-hover:scale-105 transition duration-500">
-                          <img src="${p.image_url}" class="h-full w-full object-cover" onerror="this.src='https://placehold.co/100x100?text=${p.name[0]}'">
-                        </div>
-                        <div>
-                           <p class="font-black text-gray-800 text-lg capitalize leading-tight">${p.name.toLowerCase()}</p>
-                           <p class="text-[10px] text-gray-400 font-bold mt-1 uppercase tracking-widest truncate w-40">${p.description || 'Sin descripción'}</p>
-                        </div>
-                      </div>
-                    </td>
-                    <td class="py-6 px-4">
-                        <span class="bg-blue-50 text-blue-500 text-[9px] font-black px-3 py-1.5 rounded-xl border border-blue-100 uppercase tracking-widest">${p.category || 'General'}</span>
-                    </td>
-                    <td class="py-6 px-4 text-right">
-                       <p class="font-bold text-xs text-gray-400 font-mono">Bs. ${p.cost.toFixed(2)}</p>
-                    </td>
-                    <td class="py-6 px-4 text-right">
-                       <div class="flex flex-col items-end">
-                          <p class="font-black text-lg tabular-nums ${p.track_stock && p.stock <= 5 ? 'text-red-500' : 'text-gray-800'}">
-                            ${p.track_stock ? p.stock : '∞'}
-                          </p>
-                          <span class="text-[9px] font-black uppercase tracking-tighter ${p.track_stock ? 'text-gray-400' : 'text-blue-400'}">
-                            ${p.track_stock ? (p.stock <= 5 ? '¡BAJO!' : 'STOCK') : 'SIN LÍMITE'}
-                          </span>
-                       </div>
-                    </td>
-                    <td class="py-6 px-4 text-right">
-                       <div class="flex flex-col items-end">
-                          <p class="font-black text-gray-800 text-lg tabular-nums">Bs. ${p.price.toFixed(2)}</p>
-                          <span class="text-[9px] font-black text-green-500 uppercase tracking-tighter">Profit Bs. ${(p.price - (p.cost || 0)).toFixed(2)}</span>
-                       </div>
-                    </td>
-                    <td class="py-6 px-10 text-right">
-                      <div class="flex justify-end gap-2">
-                        ${p.track_stock ? `
-                          <button class="w-8 h-8 flex items-center justify-center bg-green-50 text-green-600 rounded-lg hover:bg-green-500 hover:text-white transition active:scale-90" onclick="window.openRefillModal(${p.id})" title="Reponer Stock">
-                             ➕
-                          </button>
-                          <button class="w-8 h-8 flex items-center justify-center bg-red-50 text-red-600 rounded-lg hover:bg-red-500 hover:text-white transition active:scale-90" onclick="window.openWithdrawModal(${p.id})" title="Registrar Salida">
-                             📉
-                          </button>
-                        ` : ''}
-                        <button class="w-10 h-10 flex items-center justify-center bg-white border border-gray-100 rounded-xl text-gray-400 hover:text-blue-500 hover:shadow-md transition active:scale-90" onclick="window.editProduct(${p.id})">
-                           ✏️
-                        </button>
-                        <button class="w-10 h-10 flex items-center justify-center bg-white border border-gray-100 rounded-xl text-gray-400 hover:text-red-500 hover:shadow-md transition active:scale-90" onclick="window.deleteProduct(${p.id})">
-                           🗑️
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                `).join('') : '<tr><td colspan="5" class="py-40 text-center text-gray-300 font-black uppercase tracking-widest text-xs">No hay productos en el menú</td></tr>'}
-              </tbody>
-            </table>
-          </div>
-        </div>
+      <!-- Category Filter Tabs -->
+      <div class="flex gap-3 overflow-x-auto scrollbar-hide pb-2">
+        <button class="cat-filter-btn active-cat-filter px-5 py-3 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all whitespace-nowrap bg-black text-white shadow-lg shadow-black/20" data-cat="all">
+           📋 Todos (${products ? products.length : 0})
+        </button>
+        ${categoryList.map(c => {
+    const count = products ? products.filter(p => (p.category || 'General') === c.name).length : 0;
+    return count > 0 ? `
+            <button class="cat-filter-btn px-5 py-3 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all whitespace-nowrap bg-white text-gray-500 border border-gray-100 hover:border-gray-300 hover:shadow-md" data-cat="${c.name}">
+               ${c.name} (${count})
+            </button>
+          ` : '';
+  }).join('')}
       </div>
+
+      <!-- Products Grouped by Category -->
+      <div id="products-by-category" class="grid grid-cols-1 gap-8">
+        ${(() => {
+      if (!products || products.length === 0) {
+        return '<div class="bg-white rounded-[3rem] shadow-sm border border-gray-100 py-40 text-center text-gray-300 font-black uppercase tracking-widest text-xs">No hay productos en el menú</div>';
+      }
+      // Group products by category
+      const grouped = {};
+      products.forEach(p => {
+        const cat = p.category || 'General';
+        if (!grouped[cat]) grouped[cat] = [];
+        grouped[cat].push(p);
+      });
+      const catStyles = [
+        { bg: 'bg-blue-50', text: 'text-blue-500', border: 'border-blue-100' },
+        { bg: 'bg-purple-50', text: 'text-purple-500', border: 'border-purple-100' },
+        { bg: 'bg-emerald-50', text: 'text-emerald-500', border: 'border-emerald-100' },
+        { bg: 'bg-orange-50', text: 'text-orange-500', border: 'border-orange-100' },
+        { bg: 'bg-pink-50', text: 'text-pink-500', border: 'border-pink-100' },
+        { bg: 'bg-cyan-50', text: 'text-cyan-500', border: 'border-cyan-100' },
+        { bg: 'bg-amber-50', text: 'text-amber-500', border: 'border-amber-100' },
+        { bg: 'bg-rose-50', text: 'text-rose-500', border: 'border-rose-100' },
+        { bg: 'bg-teal-50', text: 'text-teal-500', border: 'border-teal-100' },
+        { bg: 'bg-indigo-50', text: 'text-indigo-500', border: 'border-indigo-100' },
+      ];
+      return Object.keys(grouped).map((cat, idx) => {
+        const style = catStyles[idx % catStyles.length];
+        const prods = grouped[cat];
+        return `
+              <div class="cat-section" data-cat="${cat}">
+                <!-- Category Header -->
+                <div class="flex items-center gap-4 mb-4">
+                  <div class="h-10 w-10 ${style.bg} ${style.text} rounded-2xl flex items-center justify-center text-lg font-black border ${style.border}">
+                    ${cat[0].toUpperCase()}
+                  </div>
+                  <div class="flex-1">
+                    <h3 class="font-black text-xl text-gray-800 tracking-tight">${cat}</h3>
+                    <p class="text-[10px] text-gray-400 font-bold uppercase tracking-widest">${prods.length} producto${prods.length !== 1 ? 's' : ''}</p>
+                  </div>
+                  <div class="h-px flex-1 bg-gray-100"></div>
+                </div>
+                
+                <!-- Category Table -->
+                <div class="bg-white rounded-[2.5rem] shadow-sm border border-gray-100 overflow-hidden">
+                  <div class="overflow-x-auto scrollbar-hide">
+                    <table class="w-full text-left border-collapse">
+                      <thead>
+                        <tr class="bg-gray-50/50">
+                          <th class="py-5 px-10 text-[10px] font-black text-gray-400 uppercase tracking-widest">Plato</th>
+                          <th class="py-5 px-4 text-[10px] font-black text-gray-400 uppercase tracking-widest text-right">Costo</th>
+                          <th class="py-5 px-4 text-[10px] font-black text-gray-400 uppercase tracking-widest text-right">Stock</th>
+                          <th class="py-5 px-4 text-[10px] font-black text-gray-400 uppercase tracking-widest text-right">Precio</th>
+                          <th class="py-5 px-10 text-[10px] font-black text-gray-400 uppercase tracking-widest text-right">Acciones</th>
+                        </tr>
+                      </thead>
+                      <tbody class="divide-y divide-gray-50">
+                        ${prods.map(p => `
+                          <tr class="group hover:bg-gray-50/50 transition-colors">
+                            <td class="py-5 px-10">
+                              <div class="flex items-center gap-5">
+                                <div class="h-14 w-14 rounded-2xl bg-gray-50 overflow-hidden flex-shrink-0 shadow-sm border border-gray-100 group-hover:scale-105 transition duration-500">
+                                  <img src="${p.image_url}" class="h-full w-full object-cover" onerror="this.src='https://placehold.co/100x100?text=${p.name[0]}'">
+                                </div>
+                                 <div>
+                                    <p class="font-black text-gray-800 text-base capitalize leading-tight">${p.name.toLowerCase()}</p>
+                                    <p class="text-[10px] text-gray-400 font-bold mt-1 uppercase tracking-widest truncate w-40">${p.description || 'Sin descripción'}</p>
+                                    <div id="recipe-preview-${p.id}" class="mt-2 flex flex-wrap gap-1"></div>
+                                 </div>
+                              </div>
+                            </td>
+                            <td class="py-5 px-4 text-right">
+                               <p class="font-bold text-xs text-gray-400 font-mono">Bs. ${p.cost.toFixed(2)}</p>
+                            </td>
+                            <td class="py-5 px-4 text-right">
+                               <div class="flex flex-col items-end">
+                                  <p class="font-black text-lg tabular-nums ${p.track_stock && p.stock <= 5 ? 'text-red-500' : 'text-gray-800'}">
+                                    ${p.track_stock ? p.stock : '∞'}
+                                  </p>
+                                  <span class="text-[9px] font-black uppercase tracking-tighter ${p.track_stock ? 'text-gray-400' : 'text-blue-400'}">
+                                    ${p.track_stock ? (p.stock <= 5 ? '¡BAJO!' : 'STOCK') : 'SIN LÍMITE'}
+                                  </span>
+                               </div>
+                            </td>
+                            <td class="py-5 px-4 text-right">
+                               <div class="flex flex-col items-end">
+                                  <p class="font-black text-gray-800 text-lg tabular-nums">Bs. ${p.price.toFixed(2)}</p>
+                                  <span class="text-[9px] font-black text-green-500 uppercase tracking-tighter">Profit Bs. ${(p.price - (p.cost || 0)).toFixed(2)}</span>
+                               </div>
+                            </td>
+                            <td class="py-5 px-10 text-right">
+                              <div class="flex justify-end gap-2">
+                                ${p.track_stock ? `
+                                  <button class="w-8 h-8 flex items-center justify-center bg-green-50 text-green-600 rounded-lg hover:bg-green-500 hover:text-white transition active:scale-90" onclick="window.openRefillModal(${p.id})" title="Reponer Stock">
+                                     ➕
+                                  </button>
+                                  <button class="w-8 h-8 flex items-center justify-center bg-red-50 text-red-600 rounded-lg hover:bg-red-500 hover:text-white transition active:scale-90" onclick="window.openWithdrawModal(${p.id})" title="Registrar Salida">
+                                     📉
+                                  </button>
+                                ` : ''}
+                                <button class="w-10 h-10 flex items-center justify-center bg-white border border-gray-100 rounded-xl text-gray-400 hover:text-blue-500 hover:shadow-md transition active:scale-90" onclick="window.editProduct(${p.id})">
+                                   ✏️
+                                </button>
+                                <button class="w-10 h-10 flex items-center justify-center bg-white border border-gray-100 rounded-xl text-gray-400 hover:text-red-500 hover:shadow-md transition active:scale-90" onclick="window.deleteProduct(${p.id})">
+                                   🗑️
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        `).join('')}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            `;
+      }).join('');
+    })()}
     </div>
   `;
+
+  // --- RECIPE LOGIC ---
+  const recipeContainer = document.getElementById('recipe-items-container');
+  const noRecipeMsg = document.getElementById('no-recipe-msg');
+  let currentRecipe = [];
+
+  const renderRecipeItems = () => {
+    if (currentRecipe.length === 0) {
+      recipeContainer.innerHTML = '';
+      noRecipeMsg.classList.remove('hidden');
+      return;
+    }
+    noRecipeMsg.classList.add('hidden');
+    recipeContainer.innerHTML = currentRecipe.map((item, index) => `
+      <div class="flex gap-3 items-center animate-fade-in">
+        <select class="recipe-ing-select flex-1 px-4 py-3 rounded-xl bg-white border border-gray-100 text-xs font-bold font-sans" data-index="${index}">
+          <option value="">-- Seleccionar Insumo --</option>
+          ${ingredients.map(ing => `<option value="${ing.id}" ${item.ingredient_id == ing.id ? 'selected' : ''}>${ing.name} (${ing.unit})</option>`).join('')}
+        </select>
+        <div class="w-24 relative">
+          <input type="number" step="1" min="1" class="recipe-qty-input w-full px-4 py-3 rounded-xl bg-white border border-gray-100 text-xs font-black text-center" value="${item.quantity}" data-index="${index}">
+        </div>
+        <button type="button" onclick="window.removeRecipeItem(${index})" class="w-10 h-10 flex items-center justify-center text-red-300 hover:text-red-500 hover:bg-red-50 rounded-xl transition">✕</button>
+      </div>
+    `).join('');
+
+    // Attach local listeners to selects and inputs
+    document.querySelectorAll('.recipe-ing-select').forEach(el => {
+      el.onchange = (e) => {
+        currentRecipe[e.target.dataset.index].ingredient_id = e.target.value;
+      };
+    });
+    document.querySelectorAll('.recipe-qty-input').forEach(el => {
+      el.oninput = (e) => {
+        currentRecipe[e.target.dataset.index].quantity = parseInt(e.target.value) || 1;
+      };
+    });
+  };
+
+  document.getElementById('btn-add-recipe-item').onclick = () => {
+    currentRecipe.push({ ingredient_id: '', quantity: 1 });
+    renderRecipeItems();
+  };
+
+  window.removeRecipeItem = (index) => {
+    currentRecipe.splice(index, 1);
+    renderRecipeItems();
+  };
 
   // 3. Attach Listeners
   const formSection = document.getElementById('product-form-container');
@@ -232,6 +354,8 @@ export async function renderProductManager(container) {
   // Toggle Forms
   document.getElementById('btn-add-product').addEventListener('click', () => {
     clearFormFields();
+    currentRecipe = [];
+    renderRecipeItems();
     document.getElementById('form-title').innerText = 'Nuevo Plato en el Menú';
     catManager.classList.add('hidden');
     formSection.classList.remove('hidden');
@@ -251,6 +375,29 @@ export async function renderProductManager(container) {
   document.getElementById('btn-cancel-prod').addEventListener('click', () => {
     formSection.classList.add('hidden');
     clearFormFields();
+  });
+
+  // Category Filter Tabs
+  document.querySelectorAll('.cat-filter-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      // Update active state
+      document.querySelectorAll('.cat-filter-btn').forEach(b => {
+        b.classList.remove('bg-black', 'text-white', 'shadow-lg', 'shadow-black/20');
+        b.classList.add('bg-white', 'text-gray-500', 'border', 'border-gray-100');
+      });
+      btn.classList.remove('bg-white', 'text-gray-500', 'border', 'border-gray-100');
+      btn.classList.add('bg-black', 'text-white', 'shadow-lg', 'shadow-black/20');
+
+      // Filter sections
+      const selectedCat = btn.dataset.cat;
+      document.querySelectorAll('.cat-section').forEach(section => {
+        if (selectedCat === 'all' || section.dataset.cat === selectedCat) {
+          section.classList.remove('hidden');
+        } else {
+          section.classList.add('hidden');
+        }
+      });
+    });
   });
 
   // Image Upload Logic
@@ -346,22 +493,54 @@ export async function renderProductManager(container) {
 
     let result;
     if (id) {
-      result = await supabase.from('products').update(productData).eq('id', id);
+      result = await supabase.from('products').update(productData).eq('id', id).select().single();
     } else {
-      result = await supabase.from('products').insert(productData);
+      result = await supabase.from('products').insert(productData).select().single();
     }
 
     if (result.error) {
-      showToast('Error al guardar: ' + result.error.message, 'error');
+      window.showToast('Error al guardar: ' + result.error.message, 'error');
       btn.disabled = false;
       btn.innerText = 'Guardar Producto';
     } else {
-      showToast(id ? '✅ Producto actualizado' : '✨ Producto creado');
+      // Save Recipe
+      const prodId = result.data.id;
+      // 1. Delete old recipe
+      await supabase.from('product_ingredients').delete().eq('product_id', prodId);
+      // 2. Insert new recipe items
+      const validRecipe = currentRecipe.filter(r => r.ingredient_id && r.quantity > 0);
+      if (validRecipe.length > 0) {
+        await supabase.from('product_ingredients').insert(
+          validRecipe.map(r => ({ product_id: prodId, ingredient_id: r.ingredient_id, quantity: r.quantity }))
+        );
+      }
+
+      window.showToast(id ? '✅ Producto actualizado' : '✨ Producto creado');
       formSection.classList.add('hidden');
       clearFormFields();
+      currentRecipe = [];
       renderProductManager(container);
     }
   });
+
+  // Load and Render Recipe Tabs in Table
+  const loadRecipePreviews = async () => {
+    const { data: allRecipes } = await supabase.from('product_ingredients').select('*, ingredients(name, unit)');
+    if (!allRecipes) return;
+
+    products.forEach(p => {
+      const pRecipe = allRecipes.filter(r => r.product_id === p.id);
+      const previewEl = document.getElementById(`recipe-preview-${p.id}`);
+      if (previewEl && pRecipe.length > 0) {
+        previewEl.innerHTML = pRecipe.map(r => `
+          <span class="bg-orange-50 text-orange-600 px-2 py-0.5 rounded-lg text-[9px] font-black border border-orange-100 flex items-center gap-1">
+            🍗 ${r.ingredients.name}: ${r.quantity}
+          </span>
+        `).join('');
+      }
+    });
+  };
+  loadRecipePreviews();
 
   // Global Actions
   window.editProduct = async (id) => {
@@ -383,6 +562,12 @@ export async function renderProductManager(container) {
       placeholder.classList.add('hidden');
 
       document.getElementById('form-title').innerText = 'Editando ' + p.name.toLowerCase();
+
+      // Load current recipe
+      const { data: rec } = await supabase.from('product_ingredients').select('*').eq('product_id', id);
+      currentRecipe = rec || [];
+      renderRecipeItems();
+
       catManager.classList.add('hidden');
       formSection.classList.remove('hidden');
       formSection.scrollIntoView({ behavior: 'smooth' });

@@ -10,6 +10,7 @@ import { renderKiosk } from './components/Kiosk.js';
 import { renderDashboard } from './components/Dashboard.js';
 import { renderKitchenView } from './components/Kitchen.js';
 import { renderInventoryView } from './components/Inventory.js';
+import { renderIngredientManager } from './components/IngredientManager.js';
 
 // Basic Router State
 let currentView = 'dashboard'; // dashboard, pos, reports, products, users, orders, kiosk-orders, cash, kitchen, inventory
@@ -491,6 +492,7 @@ async function renderAuthenticatedLayout() {
                <div class="pt-4 pb-2 text-[10px] font-black text-gray-500 uppercase tracking-[0.2em] px-4 transition-opacity duration-300 ${isCollapsed ? 'md:hidden' : 'opacity-100'}">Admin</div>
                ${renderNavLink('products', '🍔', 'Productos', isCollapsed)}
                ${renderNavLink('inventory', '📦', 'Inventario', isCollapsed)}
+               ${renderNavLink('ingredients', '🍗', 'Ingredientes', isCollapsed)}
                ${renderNavLink('reports', '📊', 'Reportes', isCollapsed)}
                ${renderNavLink('users', '👥', 'Usuarios', isCollapsed)}
                ${renderNavLink('kiosk', '🖥️', 'Modo Kiosco', isCollapsed)}
@@ -671,6 +673,8 @@ async function renderAuthenticatedLayout() {
     renderKitchenView(pageContent);
   } else if (currentView === 'inventory') {
     renderInventoryView(pageContent);
+  } else if (currentView === 'ingredients') {
+    renderIngredientManager(pageContent);
   } else if (currentView === 'cash') {
     // ---- CASHIER VIEW LOGIC ----
 
@@ -762,7 +766,8 @@ function getViewTitle(view) {
     'users': 'Gestión de Usuarios',
     'cash': 'Gestión de Caja',
     'kitchen': 'Control de Cocina',
-    'inventory': 'Inventario de Stock'
+    'inventory': 'Inventario de Stock',
+    'ingredients': 'Gestión de Ingredientes'
   };
   return titles[view] || 'Dashboard';
 }
@@ -907,7 +912,7 @@ window.toggleAutoPrint = () => {
 };
 
 window.setView = async (view) => {
-  if ((view === 'products' || view === 'reports' || view === 'inventory') && store.user.role !== 'admin') {
+  if ((view === 'products' || view === 'reports' || view === 'inventory' || view === 'ingredients') && store.user.role !== 'admin') {
     return alert('Acceso Denegado: Solo Administradores.');
   }
   currentView = view;
@@ -1122,10 +1127,10 @@ window.showQuantityModal = (productId) => {
 
   const modal = document.createElement('div');
   modal.id = 'qty-modal';
-  modal.className = 'fixed inset-0 z-[300] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in';
+  modal.className = 'fixed inset-0 z-[300] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm';
 
   modal.innerHTML = `
-    <div class="bg-white rounded-[2.5rem] w-full max-w-sm shadow-2xl p-8 animate-bounce-slow" onclick="event.stopPropagation()">
+    <div class="bg-white rounded-[2.5rem] w-full max-w-sm shadow-2xl p-8" onclick="event.stopPropagation()">
         <div class="text-center mb-6">
             <h3 class="text-2xl font-black text-gray-800 tracking-tight capitalize mb-1">${p.name.toLowerCase()}</h3>
             <p class="text-xs text-gray-400 font-bold uppercase">Especificar Cantidad</p>
