@@ -1,4 +1,5 @@
 import { supabase } from '../services/supabase.js';
+import { store } from '../store.js';
 
 export async function renderInventoryView(container) {
     // 1. Fetch products with stock tracking
@@ -137,8 +138,10 @@ export async function renderInventoryView(container) {
                                   </td>
                                   <td class="py-5 px-10 text-right">
                                     <div class="flex justify-end gap-2">
+                                      ${store.user?.role === 'admin' ? `
                                       <button onclick="window.openWithdrawModal(${p.id})" class="px-4 py-2 bg-red-50 text-red-500 font-black text-[10px] rounded-xl hover:bg-red-500 hover:text-white transition uppercase tracking-widest active:scale-95 shadow-sm border border-red-100">Salida</button>
                                       <button onclick="window.openRefillModal(${p.id})" class="px-4 py-2 bg-black text-white font-black text-[10px] rounded-xl hover:scale-105 transition uppercase tracking-widest active:scale-95 shadow-lg shadow-black/10">Reponer</button>
+                                      ` : '<span class="text-[10px] text-gray-300 font-bold italic">Solo Lectura</span>'}
                                     </div>
                                   </td>
                                 </tr>
@@ -200,9 +203,11 @@ export async function renderInventoryView(container) {
                                             </div>
                                         </td>
                                         <td class="py-6 px-10 text-right">
+                                            ${store.user?.role === 'admin' ? `
                                             <button onclick="window.addStockIngredientInv(${i.id}, ${i.stock}, '${i.name}')" class="px-5 py-2.5 bg-black text-white font-black text-[10px] rounded-xl hover:scale-105 transition uppercase tracking-widest active:scale-95 shadow-lg shadow-black/10">
                                                 REABASTECER
                                             </button>
+                                            ` : '<span class="text-[10px] text-gray-300 font-bold italic">Solo Vista</span>'}
                                         </td>
                                     </tr>
                                     `;
@@ -255,6 +260,7 @@ export async function renderInventoryView(container) {
     });
 
     window.addStockIngredientInv = async (id, currentStock, name) => {
+        if (store.user?.role !== 'admin') return showToast('Solo administradores pueden modificar stock', 'error');
         const amount = prompt(`¿Cuántas unidades de "${name}" deseas agregar al stock actual (${currentStock})?`);
         if (!amount || isNaN(amount)) return;
 
@@ -275,6 +281,7 @@ export async function renderInventoryView(container) {
 
     // Global Actions
     window.quickRefill = async (id, amount) => {
+        if (store.user?.role !== 'admin') return;
         const { data: p } = await supabase.from('products').select('stock').eq('id', id).single();
         if (!p) return;
 
@@ -291,6 +298,7 @@ export async function renderInventoryView(container) {
     };
 
     window.openRefillModal = async (id) => {
+        if (store.user?.role !== 'admin') return showToast('Solo administradores pueden reponer stock', 'error');
         const { data: p } = await supabase.from('products').select('*').eq('id', id).single();
         if (!p) return;
 
@@ -340,6 +348,7 @@ export async function renderInventoryView(container) {
     };
 
     window.openWithdrawModal = async (id) => {
+        if (store.user?.role !== 'admin') return showToast('Solo administradores pueden registrar salidas', 'error');
         const { data: p } = await supabase.from('products').select('*').eq('id', id).single();
         if (!p) return;
 

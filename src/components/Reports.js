@@ -85,14 +85,7 @@ export async function getDailyReport(targetDate = null) {
         });
     }
 
-    // 4. Initialize all products in productSales to ensure they appear even with 0 sales
-    if (allProducts) {
-        allProducts.forEach(p => {
-            if (!productSales[p.name]) {
-                productSales[p.name] = { name: p.name, qty: 0, revenue: 0 };
-            }
-        });
-    }
+    // 4. (Removed) Initialize all products... we only want to show sold items now
 
     const grossProfit = totalSales - totalCost;
     const netProfit = grossProfit - dailyExpenses - fixedExpenses;
@@ -112,6 +105,42 @@ export async function getDailyReport(targetDate = null) {
         orders: orders || [],
         productMap
     };
+}
+
+export async function getWeeklySales() {
+    const now = new Date(new Date().getTime() - (4 * 60 * 60 * 1000)); // Bolivia Time
+    const sevenDaysAgo = new Date(now.getTime() - (6 * 24 * 60 * 60 * 1000));
+    const startDateStr = sevenDaysAgo.toISOString().split('T')[0];
+
+    // Fetch all completed orders for the last 7 days in ONE query
+    const { data: orders, error } = await supabase
+        .from('orders')
+        .select('total_amount, created_at')
+        .eq('status', 'completed')
+        .gte('created_at', startDateStr + 'T00:00:00-04:00');
+
+    if (error) {
+        console.error('Error fetching weekly sales:', error);
+        return [];
+    }
+
+    const dailyTotals = {};
+    orders.forEach(o => {
+        const date = o.created_at.split('T')[0];
+        dailyTotals[date] = (dailyTotals[date] || 0) + (o.total_amount || 0);
+    });
+
+    const days = [];
+    for (let i = 6; i >= 0; i--) {
+        const d = new Date(now.getTime() - (i * 24 * 60 * 60 * 1000));
+        const dateStr = d.toISOString().split('T')[0];
+        days.push({
+            date: dateStr,
+            label: d.toLocaleDateString('es-ES', { weekday: 'short' }),
+            total: dailyTotals[dateStr] || 0
+        });
+    }
+    return days;
 }
 
 export async function renderReports(container, dateParam = null) {

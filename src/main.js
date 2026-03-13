@@ -202,114 +202,97 @@ function renderKioskMode() {
 // PORTAL PAGE (Landing)
 function renderPortal() {
   app.innerHTML = `
-    <div class="min-h-screen bg-[#FDFDFD] flex flex-col items-center justify-between p-6 font-sans relative overflow-hidden select-none">
-      <!-- High-Energy Background Design -->
-      <div class="absolute top-[-10%] right-[-10%] w-[40rem] h-[40rem] bg-secondary/20 rounded-full blur-[120px] animate-pulse"></div>
-      <div class="absolute bottom-[-10%] left-[-10%] w-[35rem] h-[35rem] bg-primary/10 rounded-full blur-[150px] animate-pulse" style="animation-delay: 2s"></div>
-      <div class="absolute inset-0 bg-[radial-gradient(#00000005_1px,transparent_1px)] [background-size:24px_24px]"></div>
+    <div class="min-h-screen w-full bg-[#FAFAFA] flex flex-col relative overflow-x-hidden overflow-y-auto font-sans select-none">
+      
+      <!-- Dynamic Background Elements -->
+      <div class="absolute top-0 right-0 w-[40rem] h-[40rem] bg-gradient-to-br from-secondary/20 to-primary/10 rounded-full blur-[100px] -translate-y-1/2 translate-x-1/3 pointer-events-none"></div>
+      <div class="absolute bottom-0 left-0 w-[40rem] h-[40rem] bg-gradient-to-tr from-primary/20 to-orange-500/10 rounded-full blur-[100px] translate-y-1/3 -translate-x-1/3 pointer-events-none"></div>
 
-      <!-- Floating Pop-Art Food Icons -->
-      <div class="absolute top-[15%] left-[10%] text-6xl md:text-8xl opacity-10 animate-float pointer-events-none rotate-12" style="animation-delay: 1s">🍔</div>
-      <div class="absolute top-[40%] right-[5%] text-7xl md:text-9xl opacity-10 animate-float pointer-events-none -rotate-12" style="animation-delay: 3.5s">🍟</div>
-      <div class="absolute bottom-[20%] left-[5%] text-5xl md:text-7xl opacity-10 animate-float pointer-events-none rotate-45" style="animation-delay: 2s">🥤</div>
-      <div class="absolute bottom-[25%] right-[12%] text-6xl md:text-8xl opacity-10 animate-float pointer-events-none -rotate-[30deg]" style="animation-delay: 4.5s">🍗</div>
-
-      <div class="w-full max-w-md md:max-w-2xl flex flex-col items-center gap-10 md:gap-14 z-10 animate-fade-in py-8 md:py-12">
-        <!-- Logo Section - Power Brand -->
-        <div class="relative group">
-            <div class="absolute inset-0 bg-primary/20 blur-[80px] rounded-full scale-150 group-hover:bg-primary/30 transition-all duration-1000"></div>
-            <div class="w-64 h-64 md:w-80 md:h-80 mx-auto relative transition-transform duration-700 hover:scale-[1.08] drop-shadow-[0_25px_50px_rgba(255,69,0,0.25)]">
-               <img src="/logo.png" class="w-full h-full object-contain" onerror="this.src='https://placehold.co/400x400?text=HEHA'">
+      <!-- Header Area (Logo) -->
+      <div class="flex flex-col items-center justify-center pt-10 md:pt-[12vh] pb-8 z-10 animate-fade-in">
+         <div class="relative group">
+            <div class="absolute inset-0 bg-white/50 blur-2xl rounded-full scale-110"></div>
+            <div class="w-32 h-32 md:w-56 md:h-56 relative bg-white/60 backdrop-blur-md rounded-[2.5rem] shadow-[0_20px_40px_rgba(0,0,0,0.06)] p-6 flex items-center justify-center border border-white/80 rotate-3 transform transition hover:rotate-6">
+               <img src="/logo.png" class="w-full h-full object-contain filter drop-shadow-xl z-10" onerror="this.src='https://placehold.co/400x400?text=HEHA'">
             </div>
-        </div>
-
-        <!-- Main Interaction Card - "The Hero Card" -->
-        <div class="w-full">
-            <button id="btn-portal-kiosk" class="group relative w-full bg-white p-10 md:p-14 rounded-[3.5rem] shadow-[0_40px_100px_-20px_rgba(0,0,0,0.15)] hover:shadow-[0_60px_120px_-20px_rgba(255,69,0,0.2)] transition-all duration-500 hover:scale-[1.02] active:scale-95 text-center border-4 border-transparent hover:border-primary/10 overflow-hidden">
-                <!-- Red & Yellow Accents Inner -->
-                <div class="absolute -top-12 -right-12 w-48 h-48 bg-secondary/10 rounded-full blur-3xl group-hover:bg-secondary/20 transition-all"></div>
-                <div class="absolute -bottom-12 -left-12 w-48 h-48 bg-primary/5 rounded-full blur-3xl"></div>
-                
-                <div class="relative z-10 flex flex-col items-center">
-                   <div class="w-24 h-24 md:w-28 md:h-28 bg-gradient-to-br from-primary to-orange-600 rounded-[2.5rem] flex items-center justify-center text-4xl md:text-5xl shadow-[0_20px_40px_rgba(255,69,0,0.4)] mb-8 transform group-hover:rotate-6 transition-transform">
-                     🛒
-                   </div>
-                   
-                   <h2 class="text-5xl md:text-7xl font-[1000] text-gray-900 tracking-tighter uppercase leading-none mb-4 italic">
-                      MENÚ <span class="text-primary block md:inline font-black">DIGITAL</span>
-                   </h2>
-                   
-                   <p class="text-gray-500 text-lg md:text-2xl font-bold max-w-sm leading-tight mb-10 opacity-80">
-                      El sabor que te mueve, <br class="hidden md:block"> directo a tu alcance.
-                   </p>
-                   
-                   <div class="bg-primary text-white px-12 py-6 rounded-full font-black text-xl md:text-2xl uppercase tracking-tighter transition-all shadow-[0_20px_50px_rgba(255,69,0,0.3)] group-hover:shadow-[0_25px_60px_rgba(255,69,0,0.5)] group-hover:bg-orange-600 active:scale-90 flex items-center gap-3">
-                      <span>¡Pedir Ahora!</span>
-                      <span class="text-2xl">➔</span>
-                   </div>
-                </div>
-            </button>
-        </div>
-
-        <!-- Visual Flow Guide -->
-        <div class="w-full max-w-sm bg-orange-50/50 backdrop-blur-sm border border-orange-100 rounded-[2.5rem] p-6 md:p-8">
-           <div class="flex items-center justify-around gap-4">
-              <div class="flex flex-col items-center text-center group">
-                 <div class="w-12 h-12 md:w-16 md:h-16 bg-white rounded-2xl flex items-center justify-center text-2xl md:text-3xl shadow-sm mb-2 group-hover:scale-110 transition-transform">🍔</div>
-                 <p class="text-[10px] md:text-xs font-black text-gray-800 uppercase tracking-tighter leading-none">1. PIDE AQUÍ</p>
-              </div>
-              <div class="text-orange-200 text-2xl md:text-3xl animate-pulse">➔</div>
-              <div class="flex flex-col items-center text-center group">
-                 <div class="w-12 h-12 md:w-16 md:h-16 bg-secondary text-white rounded-2xl flex items-center justify-center text-2xl md:text-3xl shadow-md mb-2 group-hover:scale-110 transition-transform">💰</div>
-                 <p class="text-[10px] md:text-xs font-black text-gray-900 uppercase tracking-tighter leading-none">2. PAGA EN CAJA</p>
-              </div>
-           </div>
-        </div>
-
-        <!-- Staff Access - Minimalist -->
-        <button id="btn-portal-login" class="group relative py-2 md:py-4 px-10 rounded-full text-gray-400 hover:text-primary transition-all font-black text-xs md:text-base uppercase tracking-[0.4em]">
-           <span class="flex items-center gap-3">
-             <span class="text-lg">🔐</span>
-             Acceso Staff
-           </span>
-           <div class="absolute bottom-2 left-1/2 -translate-x-1/2 w-0 h-[2px] bg-primary group-hover:w-full transition-all duration-500"></div>
-        </button>
+         </div>
+         <h1 class="mt-6 md:mt-10 text-4xl md:text-6xl font-[1000] text-gray-800 tracking-tighter uppercase drop-shadow-sm leading-none">
+            HEHA <span class="text-primary block md:inline">POS</span>
+         </h1>
+         <p class="text-gray-500 font-bold mt-2 md:mt-3 uppercase tracking-[0.2em] text-[10px] md:text-sm">Sabor que te mueve</p>
       </div>
 
-      <!-- Footer - Premium Branding -->
-      <div class="relative w-full text-center py-6 text-gray-400 font-bold text-[10px] md:text-[12px] uppercase tracking-[0.3em] z-10">
-         <div class="flex items-center justify-center gap-4 mb-2">
-           <div class="h-[1px] w-12 bg-gray-200"></div>
-           <span>HEHA GASTRONOMÍA</span>
-           <div class="h-[1px] w-12 bg-gray-200"></div>
-         </div>
-         <div class="opacity-50 tracking-[0.5em]">TECNOLOGÍA • CALIDAD • EXPERIENCIA</div>
+      <!-- Main Action Area (Bottom aligned for mobile reachability) -->
+      <div class="flex-1 flex flex-col justify-end p-6 z-10 pb-10 md:pb-[8vh] w-full max-w-lg mx-auto">
+          
+          <!-- Instructions/Flow (Glassmorphic) -->
+          <div class="bg-white/60 backdrop-blur-xl border border-white rounded-[2rem] p-6 mb-8 shadow-sm animate-fade-in flex items-center justify-between">
+              <div class="flex flex-col items-center gap-2">
+                  <div class="w-12 h-12 bg-white rounded-[1.2rem] shadow-sm flex items-center justify-center text-2xl border border-gray-50">📱</div>
+                  <span class="text-[10px] font-black uppercase text-gray-500 tracking-widest">Pide</span>
+              </div>
+              <div class="w-8 border-t-2 border-dashed border-gray-300"></div>
+              <div class="flex flex-col items-center gap-2">
+                  <div class="w-12 h-12 bg-white rounded-[1.2rem] shadow-sm flex items-center justify-center text-2xl border border-gray-50">👨‍🍳</div>
+                  <span class="text-[10px] font-black uppercase text-gray-500 tracking-widest">Cocina</span>
+              </div>
+              <div class="w-8 border-t-2 border-dashed border-gray-300"></div>
+              <div class="flex flex-col items-center gap-2">
+                  <div class="w-14 h-14 bg-gradient-to-br from-primary to-orange-500 text-white rounded-[1.2rem] shadow-lg shadow-primary/30 flex items-center justify-center text-2xl -mt-2">😋</div>
+                  <span class="text-[10px] font-black uppercase text-gray-800 tracking-widest">Disfruta</span>
+              </div>
+          </div>
+
+          <!-- Hero Button -->
+          <button id="btn-portal-kiosk" class="group relative w-full bg-gray-900 text-white p-6 rounded-[2rem] shadow-[0_20px_40px_rgba(0,0,0,0.15)] hover:shadow-[0_20px_40px_rgba(0,0,0,0.25)] transition-all duration-300 active:scale-[0.98] overflow-hidden">
+              <div class="absolute inset-0 bg-gradient-to-r from-primary to-orange-600 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+              <div class="relative z-10 flex items-center justify-between px-2">
+                  <div class="flex flex-col items-start leading-none gap-2 text-left">
+                      <span class="text-xs font-bold text-white/70 uppercase tracking-[0.2em]">Inicia tu pedido</span>
+                      <span class="text-3xl font-black uppercase tracking-tighter">Ver Menú</span>
+                  </div>
+                  <div class="w-14 h-14 bg-white/10 backdrop-blur-sm rounded-2xl flex items-center justify-center text-2xl border border-white/10 group-hover:bg-white group-hover:text-primary transition-colors shadow-inner">
+                      ➔
+                  </div>
+              </div>
+          </button>
+
+          <!-- Staff Access Link -->
+          <button id="btn-portal-login" class="mt-8 mx-auto flex items-center gap-2 text-gray-400 hover:text-gray-800 font-bold text-xs uppercase tracking-[0.3em] transition-colors p-4 relative after:absolute after:bottom-2 after:left-1/2 after:-translate-x-1/2 after:w-0 after:h-[2px] after:bg-primary hover:after:w-8 after:transition-all">
+              <span class="text-lg">🔐</span> Acceso Staff
+          </button>
       </div>
     </div>
 
-    <!-- Name Modal Redesign -->
-    <div id="portal-name-modal" class="fixed inset-0 bg-black/60 backdrop-blur-xl z-[200] hidden flex items-center justify-center p-4 overflow-y-auto">
-       <div class="bg-white w-full max-w-lg rounded-[3.5rem] p-10 md:p-14 shadow-[0_50px_100px_rgba(0,0,0,0.5)] animate-bounce-in-up relative overflow-hidden">
-          <!-- Decor inside modal -->
-          <div class="absolute -top-20 -right-20 w-64 h-64 bg-primary/5 rounded-full blur-3xl"></div>
+    <!-- Bottom Sheet Modal for Name Input -->
+    <div id="portal-name-modal" class="fixed inset-0 z-[200] hidden flex-col justify-end">
+       <!-- Backdrop -->
+       <div id="portal-name-backdrop" class="absolute inset-0 bg-gray-900/40 backdrop-blur-sm transition-opacity duration-300 opacity-0"></div>
+       
+       <!-- Sheet Content -->
+       <div id="portal-name-sheet" class="relative w-full max-w-lg mx-auto bg-white rounded-t-[2.5rem] md:rounded-[2.5rem] md:mb-6 p-8 pb-12 shadow-[0_-20px_60px_rgba(0,0,0,0.1)] transform translate-y-full md:translate-y-[120%] transition-transform duration-300 ease-out z-10 flex flex-col">
           
-          <div class="text-center mb-10 relative z-10">
-             <div class="inline-block bg-secondary/20 p-6 rounded-full mb-6 text-5xl transform -rotate-12 animate-pulse">👋</div>
-             <h3 class="text-4xl md:text-5xl font-[1000] text-gray-900 tracking-tighter leading-none">¡HOLA!</h3>
-             <p class="text-gray-400 font-black uppercase text-xs tracking-widest mt-4">¿Cuál es tu nombre para el pedido?</p>
+          <!-- Handle (Mobile) -->
+          <div class="w-14 h-1.5 bg-gray-200 rounded-full mx-auto mb-8 md:hidden"></div>
+          
+          <div class="text-center mb-8">
+             <div class="inline-flex items-center justify-center w-20 h-20 bg-primary/10 text-primary rounded-[2rem] text-4xl mb-6 shadow-inner">👋</div>
+             <h3 class="text-3xl md:text-4xl font-black text-gray-800 tracking-tight leading-tight">¿Cómo te llamas?</h3>
+             <p class="text-gray-500 font-medium text-sm mt-3 px-4">Así sabremos a quién avisar cuando tu pedido esté listo.</p>
           </div>
           
-          <input type="text" id="portal-name-input" 
-                 placeholder="Escribe tu nombre aquí..." 
-                 class="w-full p-6 md:p-8 rounded-3xl bg-gray-50 border-4 border-transparent focus:border-primary outline-none text-2xl md:text-4xl font-black text-center transition-all mb-10 text-gray-800 placeholder:text-gray-300">
-          
-          <div class="flex flex-col gap-4 relative z-10">
-             <button id="btn-portal-confirm" class="w-full bg-primary hover:bg-orange-600 text-white font-black py-6 md:py-8 rounded-3xl shadow-[0_20px_40px_rgba(255,69,0,0.3)] transition active:scale-95 text-xl md:text-2xl uppercase tracking-tighter">
-                Comenzar a Comer ➔
-             </button>
-             <button id="btn-portal-cancel" class="w-full bg-transparent text-gray-400 font-bold py-4 rounded-2xl text-sm uppercase tracking-widest hover:text-gray-600 transition-colors">
-                Regresar
-             </button>
+          <div class="space-y-4">
+              <input type="text" id="portal-name-input" 
+                     placeholder="Ej: Carlos..." 
+                     class="w-full px-6 py-5 rounded-[1.5rem] bg-gray-50 border-2 border-transparent focus:border-primary focus:bg-white outline-none text-2xl font-black text-center text-gray-800 placeholder:text-gray-300 placeholder:font-bold transition-all mb-2">
+              
+              <button id="btn-portal-confirm" class="w-full bg-primary text-white font-black py-5 rounded-[1.5rem] shadow-lg shadow-primary/30 hover:bg-orange-600 active:scale-[0.98] transition-all text-xl uppercase tracking-tight flex items-center justify-center gap-3">
+                 Empezar Pedido <span class="bg-white/20 text-white rounded-xl w-8 h-8 flex items-center justify-center text-sm">➔</span>
+              </button>
+              
+              <button id="btn-portal-cancel" class="w-full text-gray-400 font-bold py-4 rounded-[1.5rem] hover:bg-gray-50 transition-colors uppercase tracking-widest text-xs">
+                 Cancelar
+              </button>
           </div>
        </div>
     </div>
@@ -318,9 +301,32 @@ function renderPortal() {
   document.getElementById('btn-portal-login').addEventListener('click', renderLogin);
 
   document.getElementById('btn-portal-kiosk').addEventListener('click', () => {
-    document.getElementById('portal-name-modal').classList.remove('hidden');
-    document.getElementById('portal-name-input').focus();
+    const modal = document.getElementById('portal-name-modal');
+    const backdrop = document.getElementById('portal-name-backdrop');
+    const sheet = document.getElementById('portal-name-sheet');
+
+    modal.classList.remove('hidden');
+    // small delay to allow display:block to apply before animating opacity/transform
+    setTimeout(() => {
+      backdrop.classList.remove('opacity-0');
+      backdrop.classList.add('opacity-100');
+      sheet.classList.remove('translate-y-full', 'md:translate-y-[120%]');
+      document.getElementById('portal-name-input').focus();
+    }, 10);
   });
+
+  const closeModal = () => {
+    const backdrop = document.getElementById('portal-name-backdrop');
+    const sheet = document.getElementById('portal-name-sheet');
+
+    backdrop.classList.remove('opacity-100');
+    backdrop.classList.add('opacity-0');
+    sheet.classList.add('translate-y-full', 'md:translate-y-[120%]');
+
+    setTimeout(() => {
+      document.getElementById('portal-name-modal').classList.add('hidden');
+    }, 300);
+  };
 
   const confirmName = () => {
     const name = document.getElementById('portal-name-input').value.trim();
@@ -333,9 +339,8 @@ function renderPortal() {
   };
 
   document.getElementById('btn-portal-confirm').addEventListener('click', confirmName);
-  document.getElementById('btn-portal-cancel').addEventListener('click', () => {
-    document.getElementById('portal-name-modal').classList.add('hidden');
-  });
+  document.getElementById('btn-portal-cancel').addEventListener('click', closeModal);
+  document.getElementById('portal-name-backdrop').addEventListener('click', closeModal);
 
   document.getElementById('portal-name-input').addEventListener('keypress', (e) => {
     if (e.key === 'Enter') confirmName();
@@ -489,14 +494,17 @@ async function renderAuthenticatedLayout() {
              ${renderNavLink('kitchen', '👨‍🍳', 'Comandas', isCollapsed)}
              
              ${store.user.role === 'admin' ? `
-               <div class="pt-4 pb-2 text-[10px] font-black text-gray-500 uppercase tracking-[0.2em] px-4 transition-opacity duration-300 ${isCollapsed ? 'md:hidden' : 'opacity-100'}">Admin</div>
+               <div class="pt-4 pb-2 text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] px-4 transition-opacity duration-300 ${isCollapsed ? 'md:hidden' : 'opacity-100'}">Admin</div>
                ${renderNavLink('products', '🍔', 'Productos', isCollapsed)}
                ${renderNavLink('inventory', '📦', 'Inventario', isCollapsed)}
                ${renderNavLink('ingredients', '🍗', 'Ingredientes', isCollapsed)}
                ${renderNavLink('reports', '📊', 'Reportes', isCollapsed)}
                ${renderNavLink('users', '👥', 'Usuarios', isCollapsed)}
                ${renderNavLink('kiosk', '🖥️', 'Modo Kiosco', isCollapsed)}
-             ` : ''}
+             ` : `
+               <div class="pt-4 pb-2 text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] px-4 transition-opacity duration-300 ${isCollapsed ? 'md:hidden' : 'opacity-100'}">Operaciones</div>
+               ${renderNavLink('inventory', '📦', 'Ver Stock', isCollapsed)}
+             `}
 
              <div class="pt-4 border-t border-white/5 mt-4">
                 ${renderNavLink('cash', '💰', 'Gestión Caja', isCollapsed)}
@@ -912,7 +920,7 @@ window.toggleAutoPrint = () => {
 };
 
 window.setView = async (view) => {
-  if ((view === 'products' || view === 'reports' || view === 'inventory' || view === 'ingredients') && store.user.role !== 'admin') {
+  if ((view === 'products' || view === 'reports' || view === 'ingredients') && store.user.role !== 'admin') {
     return alert('Acceso Denegado: Solo Administradores.');
   }
   currentView = view;
@@ -1748,24 +1756,31 @@ async function renderOrdersHistory(container) {
             <p class="text-xs text-gray-400 font-bold uppercase tracking-[0.2em] mt-1">Historial de ventas y gestión de órdenes</p>
           </div>
           
-          <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 w-full lg:w-auto">
-             <div class="bg-white px-6 py-4 rounded-[1.5rem] shadow-sm border border-gray-100 flex flex-col justify-center">
-                <p class="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1">Venta Total</p>
-                <p id="orders-grand-total" class="text-xl font-black text-primary">Bs. 0.00</p>
-             </div>
-             <div class="bg-white px-6 py-4 rounded-[1.5rem] shadow-sm border border-gray-100 flex flex-col justify-center">
-                <p class="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1">Órdenes</p>
-                <p id="orders-count" class="text-xl font-black text-gray-800">0</p>
-             </div>
-             <div class="bg-white px-6 py-4 rounded-[1.5rem] shadow-sm border border-gray-100 flex flex-col justify-center border-l-4 border-l-green-500">
-                <p class="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1 text-green-600">Total Efectivo</p>
-                <p id="orders-cash-total" class="text-xl font-black text-gray-800">Bs. 0.00</p>
-             </div>
-             <div class="bg-white px-6 py-4 rounded-[1.5rem] shadow-sm border border-gray-100 flex flex-col justify-center border-l-4 border-l-blue-500">
-                <p class="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1 text-blue-600">Total QR</p>
-                <p id="orders-qr-total" class="text-xl font-black text-gray-800">Bs. 0.00</p>
-             </div>
-          </div>
+           ${store.user?.role === 'admin' ? `
+           <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 w-full lg:w-auto">
+              <div class="bg-white px-6 py-4 rounded-[1.5rem] shadow-sm border border-gray-100 flex flex-col justify-center">
+                 <p class="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1">Venta Total</p>
+                 <p id="orders-grand-total" class="text-xl font-black text-primary">Bs. 0.00</p>
+              </div>
+              <div class="bg-white px-6 py-4 rounded-[1.5rem] shadow-sm border border-gray-100 flex flex-col justify-center">
+                 <p class="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1">Órdenes</p>
+                 <p id="orders-count" class="text-xl font-black text-gray-800">0</p>
+              </div>
+              <div class="bg-white px-6 py-4 rounded-[1.5rem] shadow-sm border border-gray-100 flex flex-col justify-center border-l-4 border-l-green-500">
+                 <p class="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1 text-green-600">Total Efectivo</p>
+                 <p id="orders-cash-total" class="text-xl font-black text-gray-800">Bs. 0.00</p>
+              </div>
+              <div class="bg-white px-6 py-4 rounded-[1.5rem] shadow-sm border border-gray-100 flex flex-col justify-center border-l-4 border-l-blue-500">
+                 <p class="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1 text-blue-600">Total QR</p>
+                 <p id="orders-qr-total" class="text-xl font-black text-gray-800">Bs. 0.00</p>
+              </div>
+           </div>
+           ` : `
+            <div class="bg-white px-6 py-4 rounded-[1.5rem] shadow-sm border border-gray-100 flex flex-col justify-center">
+                 <p class="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1">Órdenes Hoy</p>
+                 <p id="orders-count" class="text-xl font-black text-gray-800">0</p>
+            </div>
+           `}
       </div>
 
       <!-- Filters & Search Bar -->
