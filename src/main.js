@@ -200,60 +200,71 @@ function renderKioskMode() {
 // PORTAL PAGE (Landing)
 function renderPortal() {
   app.innerHTML = `
-    <div class="min-h-screen w-full bg-[#FAFAFA] flex flex-col items-center justify-center relative overflow-hidden font-sans select-none">
+    <div class="min-h-screen w-full bg-[#FAFAFA] flex flex-col items-center justify-center relative overflow-hidden font-sans select-none px-4">
       
       <!-- Premium Background Effects -->
       <div class="absolute top-0 right-0 w-[40rem] h-[40rem] bg-gradient-to-br from-primary/30 to-orange-500/10 rounded-full blur-[120px] -translate-y-1/2 translate-x-1/3 pointer-events-none opacity-60"></div>
       <div class="absolute bottom-0 left-0 w-[40rem] h-[40rem] bg-gradient-to-tr from-primary/30 to-yellow-500/10 rounded-full blur-[120px] translate-y-1/3 -translate-x-1/3 pointer-events-none opacity-60"></div>
 
-      <div class="scale-up z-10 flex flex-col items-center max-w-md w-full px-8">
+      <div class="scale-up z-10 flex flex-col items-center max-w-2xl w-full">
           <!-- Logo & Branding -->
-          <div class="relative group mb-8 md:mb-12">
+          <div class="relative group mb-12">
             <div class="absolute inset-0 bg-white/40 blur-3xl rounded-full scale-125 animate-pulse"></div>
             <div class="w-32 h-32 md:w-48 md:h-48 relative bg-white/70 backdrop-blur-xl rounded-[3rem] shadow-[0_25px_50px_rgba(0,0,0,0.08)] p-6 flex items-center justify-center border border-white/80 transform transition group-hover:rotate-6 group-hover:scale-105 duration-500">
                <img src="/logo.png" class="w-full h-full object-contain filter drop-shadow-2xl z-10" onerror="this.src='https://placehold.co/400x400?text=HEHA'">
             </div>
           </div>
           
-          <div class="text-center mb-12">
-              <h1 class="text-5xl md:text-7xl font-[1000] text-gray-800 tracking-tighter uppercase leading-none mb-2">
+          <div class="text-center mb-10">
+              <h1 class="text-5xl md:text-8xl font-[1000] text-gray-800 tracking-tighter uppercase leading-none mb-4">
                  HEHA <span class="text-primary">FOOD</span>
               </h1>
               <p class="text-gray-400 font-black uppercase tracking-[0.4em] text-xs">Sabor que te mueve</p>
           </div>
 
+          <!-- Professional Description (Required for Google Verification) -->
+          <div class="bg-white/50 backdrop-blur-sm border border-gray-100 rounded-[2.5rem] p-8 md:p-12 mb-10 text-center shadow-sm max-w-lg">
+              <h2 class="text-xl font-black text-gray-800 uppercase tracking-tight mb-4">Sistema de Pedidos Inteligente</h2>
+              <p class="text-gray-500 font-medium leading-relaxed">
+                  Bienvenido a la plataforma oficial de <b>HEHA Fast Food</b>. 
+                  Inicia sesión de forma segura para realizar tus pedidos, personalizar tu menú y agilizar tu experiencia en nuestras sucursales.
+              </p>
+          </div>
+
           <!-- Main Action: Google Login -->
-          <button id="btn-google-login" class="w-full group bg-white border border-gray-100 p-1 rounded-[2rem] shadow-[0_20px_40px_rgba(0,0,0,0.05)] hover:shadow-[0_25px_50px_rgba(0,0,0,0.12)] transition-all duration-500 active:scale-[0.98] flex items-center relative overflow-hidden">
-              <div class="absolute inset-0 bg-gradient-to-r from-gray-50 to-white opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
-              
-              <div class="w-14 h-14 md:w-16 md:h-16 bg-white rounded-[1.8rem] flex items-center justify-center shadow-sm relative z-10 border border-gray-50 flex-shrink-0 ml-1">
-                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
-                    <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.21v2.81C4.07 20.59 7.77 23 12 23z" fill="#34A853"/>
-                    <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.09H2.21C1.45 8.57 1 10.23 1 12s.45 3.43 1.21 4.91l3.63-2.82z" fill="#FBBC05"/>
-                    <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.77 1 4.07 3.41 2.21 6.91l3.63 2.82c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
-                 </svg>
-              </div>
-              
-              <div class="flex-1 text-center pr-10 md:pr-14 relative z-10">
-                  <span class="text-sm font-black text-gray-500 uppercase tracking-widest block mb-0.5">Bienvenido</span>
-                  <span class="text-lg md:text-xl font-black text-gray-800 tracking-tight">Continuar con Google</span>
-              </div>
-          </button>
+          <div class="w-full max-w-sm">
+              <button id="btn-google-login" class="w-full group bg-white border border-gray-100 p-1 rounded-[2.2rem] shadow-[0_20px_40px_rgba(0,0,0,0.05)] hover:shadow-[0_25px_50px_rgba(0,0,0,0.12)] transition-all duration-500 active:scale-[0.98] flex items-center relative overflow-hidden">
+                  <div class="absolute inset-0 bg-gradient-to-r from-gray-50 to-white opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+                  
+                  <div class="w-16 h-16 bg-white rounded-[2rem] flex items-center justify-center shadow-sm relative z-10 border border-gray-50 flex-shrink-0 ml-1">
+                     <svg width="28" height="28" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+                        <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.21v2.81C4.07 20.59 7.77 23 12 23z" fill="#34A853"/>
+                        <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.09H2.21C1.45 8.57 1 10.23 1 12s.45 3.43 1.21 4.91l3.63-2.82z" fill="#FBBC05"/>
+                        <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.77 1 4.07 3.41 2.21 6.91l3.63 2.82c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+                     </svg>
+                  </div>
+                  
+                  <div class="flex-1 text-center pr-10 md:pr-14 relative z-10">
+                      <span class="text-[10px] font-black text-gray-400 uppercase tracking-[0.3em] block mb-0.5 opacity-70">Acceso Seguro</span>
+                      <span class="text-xl font-black text-gray-800 tracking-tight">Continuar con Google</span>
+                  </div>
+              </button>
+          </div>
 
           <!-- Staff Access -->
-          <button id="btn-portal-login" class="mt-20 flex items-center gap-3 text-gray-300 hover:text-primary font-black text-[10px] uppercase tracking-[0.3em] transition-all p-4 hover:scale-105">
+          <button id="btn-portal-login" class="mt-16 flex items-center gap-3 text-gray-300 hover:text-primary font-black text-[10px] uppercase tracking-[0.3em] transition-all p-4 hover:scale-105">
               <span class="w-8 h-8 rounded-full border border-gray-100 flex items-center justify-center text-xs">🔐</span>
               Panel de Administración
           </button>
       </div>
 
-      <!-- Footer Info -->
-      <div class="absolute bottom-8 left-0 right-0 text-center opacity-40">
-          <p class="text-[9px] font-black uppercase tracking-[0.5em] text-gray-400 mb-2">Heha Fast Food &bull; 2024</p>
-          <div class="flex justify-center gap-6">
-              <a href="/privacy.html" class="text-[9px] font-black uppercase tracking-widest text-gray-400 hover:text-primary transition">Privacidad</a>
-              <a href="/terms.html" class="text-[9px] font-black uppercase tracking-widest text-gray-400 hover:text-primary transition">Términos</a>
+      <!-- Professional Footer Info with visible links -->
+      <div class="absolute bottom-8 left-0 right-0 text-center">
+          <p class="text-[9px] font-black uppercase tracking-[0.5em] text-gray-400 mb-4 opacity-50">Heha Fast Food &bull; Santa Cruz, Bolivia</p>
+          <div class="flex justify-center gap-8">
+              <a href="/privacy.html" class="text-[10px] font-black uppercase tracking-[0.2em] text-gray-400 hover:text-black border-b border-transparent hover:border-black transition-all py-1">Política de Privacidad</a>
+              <a href="/terms.html" class="text-[10px] font-black uppercase tracking-[0.2em] text-gray-400 hover:text-black border-b border-transparent hover:border-black transition-all py-1">Términos de Uso</a>
           </div>
       </div>
     </div>
