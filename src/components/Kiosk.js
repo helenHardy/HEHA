@@ -396,11 +396,12 @@ function renderCartScreen(container) {
                          </div>
                          
                          <div class="space-y-4 mb-8">
-                             <div>
-                                <label class="block text-xs font-black text-gray-400 uppercase tracking-widest mb-2">Tu Nombre para el Pedido</label>
-                                <input type="text" id="kiosk-customer-name" 
-                                       placeholder="Escribe tu nombre aquí..." value="${store.customerName || ''}"
-                                       class="w-full p-4 rounded-2xl bg-gray-50 border-2 border-gray-100 focus:border-yellow-400 outline-none text-xl font-bold transition-all">
+                             <div class="bg-gray-50 p-4 rounded-2xl border border-gray-100 flex items-center justify-between">
+                                 <div>
+                                    <p class="text-[10px] font-black text-gray-400 uppercase tracking-widest">Pedido para</p>
+                                    <p class="text-xl font-black text-gray-800 capitalize">${(store.user?.full_name || 'Invitado').toLowerCase()}</p>
+                                 </div>
+                                 <div class="w-10 h-10 bg-white rounded-full flex items-center justify-center shadow-sm text-lg">👤</div>
                              </div>
                              
                              <div class="flex justify-between text-gray-500 font-bold text-lg">
@@ -439,12 +440,10 @@ function renderCartScreen(container) {
     window.kioskCheckout = async () => {
         if (store.cart.length === 0) return;
 
-        const nameInput = document.getElementById('kiosk-customer-name');
-        const customerName = nameInput ? nameInput.value.trim() : '';
+        const customerName = store.user?.full_name || store.customerName;
 
         if (!customerName) {
-            alert("Por favor, ingresa tu nombre para que podamos llamarte.");
-            nameInput.focus();
+            alert("Por favor, inicia sesión para realizar tu pedido.");
             return;
         }
 

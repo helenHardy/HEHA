@@ -39,11 +39,15 @@ let kitchenSubscription = null;
 async function loadKitchenOrders() {
     const grid = document.getElementById('kitchen-orders-grid');
 
+    // Filter by today's date (-04:00)
+    const today = new Date(new Date().getTime() - (4 * 60 * 60 * 1000)).toISOString().split('T')[0];
+
     const { data: orders, error } = await supabase
         .from('orders')
         .select('*, order_items(*, products(*))')
         .eq('kitchen_status', 'pending')
         .eq('status', 'completed')
+        .gte('created_at', today + 'T00:00:00-04:00')
         .order('created_at', { ascending: true });
 
     if (error) {

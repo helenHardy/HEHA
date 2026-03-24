@@ -149,12 +149,10 @@ async function render() {
   }
 
   // Routing Logic
-  if (requestedView === 'kiosk') {
+  if (requestedView === 'kiosk' || (store.user && (store.user.role === 'kiosco' || store.user.role === 'cliente'))) {
     renderKioskMode();
   } else if (!store.user) {
     renderPortal();
-  } else if (store.user.role === 'kiosco') {
-    renderKioskMode();
   } else {
     renderAuthenticatedLayout();
   }
@@ -202,148 +200,90 @@ function renderKioskMode() {
 // PORTAL PAGE (Landing)
 function renderPortal() {
   app.innerHTML = `
-    <div class="min-h-screen w-full bg-[#FAFAFA] flex flex-col relative overflow-x-hidden overflow-y-auto font-sans select-none">
+    <div class="min-h-screen w-full bg-[#FAFAFA] flex flex-col items-center justify-center relative overflow-hidden font-sans select-none">
       
-      <!-- Dynamic Background Elements -->
-      <div class="absolute top-0 right-0 w-[40rem] h-[40rem] bg-gradient-to-br from-secondary/20 to-primary/10 rounded-full blur-[100px] -translate-y-1/2 translate-x-1/3 pointer-events-none"></div>
-      <div class="absolute bottom-0 left-0 w-[40rem] h-[40rem] bg-gradient-to-tr from-primary/20 to-orange-500/10 rounded-full blur-[100px] translate-y-1/3 -translate-x-1/3 pointer-events-none"></div>
+      <!-- Premium Background Effects -->
+      <div class="absolute top-0 right-0 w-[40rem] h-[40rem] bg-gradient-to-br from-primary/30 to-orange-500/10 rounded-full blur-[120px] -translate-y-1/2 translate-x-1/3 pointer-events-none opacity-60"></div>
+      <div class="absolute bottom-0 left-0 w-[40rem] h-[40rem] bg-gradient-to-tr from-primary/30 to-yellow-500/10 rounded-full blur-[120px] translate-y-1/3 -translate-x-1/3 pointer-events-none opacity-60"></div>
 
-      <!-- Header Area (Logo) -->
-      <div class="flex flex-col items-center justify-center pt-10 md:pt-[12vh] pb-8 z-10 animate-fade-in">
-         <div class="relative group">
-            <div class="absolute inset-0 bg-white/50 blur-2xl rounded-full scale-110"></div>
-            <div class="w-32 h-32 md:w-56 md:h-56 relative bg-white/60 backdrop-blur-md rounded-[2.5rem] shadow-[0_20px_40px_rgba(0,0,0,0.06)] p-6 flex items-center justify-center border border-white/80 rotate-3 transform transition hover:rotate-6">
-               <img src="/logo.png" class="w-full h-full object-contain filter drop-shadow-xl z-10" onerror="this.src='https://placehold.co/400x400?text=HEHA'">
+      <div class="scale-up z-10 flex flex-col items-center max-w-md w-full px-8">
+          <!-- Logo & Branding -->
+          <div class="relative group mb-8 md:mb-12">
+            <div class="absolute inset-0 bg-white/40 blur-3xl rounded-full scale-125 animate-pulse"></div>
+            <div class="w-32 h-32 md:w-48 md:h-48 relative bg-white/70 backdrop-blur-xl rounded-[3rem] shadow-[0_25px_50px_rgba(0,0,0,0.08)] p-6 flex items-center justify-center border border-white/80 transform transition group-hover:rotate-6 group-hover:scale-105 duration-500">
+               <img src="/logo.png" class="w-full h-full object-contain filter drop-shadow-2xl z-10" onerror="this.src='https://placehold.co/400x400?text=HEHA'">
             </div>
-         </div>
-         <h1 class="mt-6 md:mt-10 text-4xl md:text-6xl font-[1000] text-gray-800 tracking-tighter uppercase drop-shadow-sm leading-none">
-            HEHA <span class="text-primary block md:inline">POS</span>
-         </h1>
-         <p class="text-gray-500 font-bold mt-2 md:mt-3 uppercase tracking-[0.2em] text-[10px] md:text-sm">Sabor que te mueve</p>
-      </div>
-
-      <!-- Main Action Area (Bottom aligned for mobile reachability) -->
-      <div class="flex-1 flex flex-col justify-end p-6 z-10 pb-10 md:pb-[8vh] w-full max-w-lg mx-auto">
+          </div>
           
-          <!-- Instructions/Flow (Glassmorphic) -->
-          <div class="bg-white/60 backdrop-blur-xl border border-white rounded-[2rem] p-6 mb-8 shadow-sm animate-fade-in flex items-center justify-between">
-              <div class="flex flex-col items-center gap-2">
-                  <div class="w-12 h-12 bg-white rounded-[1.2rem] shadow-sm flex items-center justify-center text-2xl border border-gray-50">📱</div>
-                  <span class="text-[10px] font-black uppercase text-gray-500 tracking-widest">Pide</span>
-              </div>
-              <div class="w-8 border-t-2 border-dashed border-gray-300"></div>
-              <div class="flex flex-col items-center gap-2">
-                  <div class="w-12 h-12 bg-white rounded-[1.2rem] shadow-sm flex items-center justify-center text-2xl border border-gray-50">👨‍🍳</div>
-                  <span class="text-[10px] font-black uppercase text-gray-500 tracking-widest">Cocina</span>
-              </div>
-              <div class="w-8 border-t-2 border-dashed border-gray-300"></div>
-              <div class="flex flex-col items-center gap-2">
-                  <div class="w-14 h-14 bg-gradient-to-br from-primary to-orange-500 text-white rounded-[1.2rem] shadow-lg shadow-primary/30 flex items-center justify-center text-2xl -mt-2">😋</div>
-                  <span class="text-[10px] font-black uppercase text-gray-800 tracking-widest">Disfruta</span>
-              </div>
+          <div class="text-center mb-12">
+              <h1 class="text-5xl md:text-7xl font-[1000] text-gray-800 tracking-tighter uppercase leading-none mb-2">
+                 HEHA <span class="text-primary">FOOD</span>
+              </h1>
+              <p class="text-gray-400 font-black uppercase tracking-[0.4em] text-xs">Sabor que te mueve</p>
           </div>
 
-          <!-- Hero Button -->
-          <button id="btn-portal-kiosk" class="group relative w-full bg-gray-900 text-white p-6 rounded-[2rem] shadow-[0_20px_40px_rgba(0,0,0,0.15)] hover:shadow-[0_20px_40px_rgba(0,0,0,0.25)] transition-all duration-300 active:scale-[0.98] overflow-hidden">
-              <div class="absolute inset-0 bg-gradient-to-r from-primary to-orange-600 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
-              <div class="relative z-10 flex items-center justify-between px-2">
-                  <div class="flex flex-col items-start leading-none gap-2 text-left">
-                      <span class="text-xs font-bold text-white/70 uppercase tracking-[0.2em]">Inicia tu pedido</span>
-                      <span class="text-3xl font-black uppercase tracking-tighter">Ver Menú</span>
-                  </div>
-                  <div class="w-14 h-14 bg-white/10 backdrop-blur-sm rounded-2xl flex items-center justify-center text-2xl border border-white/10 group-hover:bg-white group-hover:text-primary transition-colors shadow-inner">
-                      ➔
-                  </div>
+          <!-- Main Action: Google Login -->
+          <button id="btn-google-login" class="w-full group bg-white border border-gray-100 p-1 rounded-[2rem] shadow-[0_20px_40px_rgba(0,0,0,0.05)] hover:shadow-[0_25px_50px_rgba(0,0,0,0.12)] transition-all duration-500 active:scale-[0.98] flex items-center relative overflow-hidden">
+              <div class="absolute inset-0 bg-gradient-to-r from-gray-50 to-white opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+              
+              <div class="w-14 h-14 md:w-16 md:h-16 bg-white rounded-[1.8rem] flex items-center justify-center shadow-sm relative z-10 border border-gray-50 flex-shrink-0 ml-1">
+                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+                    <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.21v2.81C4.07 20.59 7.77 23 12 23z" fill="#34A853"/>
+                    <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.09H2.21C1.45 8.57 1 10.23 1 12s.45 3.43 1.21 4.91l3.63-2.82z" fill="#FBBC05"/>
+                    <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.77 1 4.07 3.41 2.21 6.91l3.63 2.82c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+                 </svg>
+              </div>
+              
+              <div class="flex-1 text-center pr-10 md:pr-14 relative z-10">
+                  <span class="text-sm font-black text-gray-500 uppercase tracking-widest block mb-0.5">Bienvenido</span>
+                  <span class="text-lg md:text-xl font-black text-gray-800 tracking-tight">Continuar con Google</span>
               </div>
           </button>
 
-          <!-- Staff Access Link -->
-          <button id="btn-portal-login" class="mt-8 mx-auto flex items-center gap-2 text-gray-400 hover:text-gray-800 font-bold text-xs uppercase tracking-[0.3em] transition-colors p-4 relative after:absolute after:bottom-2 after:left-1/2 after:-translate-x-1/2 after:w-0 after:h-[2px] after:bg-primary hover:after:w-8 after:transition-all">
-              <span class="text-lg">🔐</span> Acceso Staff
+          <!-- Staff Access -->
+          <button id="btn-portal-login" class="mt-20 flex items-center gap-3 text-gray-300 hover:text-primary font-black text-[10px] uppercase tracking-[0.3em] transition-all p-4 hover:scale-105">
+              <span class="w-8 h-8 rounded-full border border-gray-100 flex items-center justify-center text-xs">🔐</span>
+              Panel de Administración
           </button>
       </div>
-    </div>
 
-    <!-- Bottom Sheet Modal for Name Input -->
-    <div id="portal-name-modal" class="fixed inset-0 z-[200] hidden flex-col justify-end">
-       <!-- Backdrop -->
-       <div id="portal-name-backdrop" class="absolute inset-0 bg-gray-900/40 backdrop-blur-sm transition-opacity duration-300 opacity-0"></div>
-       
-       <!-- Sheet Content -->
-       <div id="portal-name-sheet" class="relative w-full max-w-lg mx-auto bg-white rounded-t-[2.5rem] md:rounded-[2.5rem] md:mb-6 p-8 pb-12 shadow-[0_-20px_60px_rgba(0,0,0,0.1)] transform translate-y-full md:translate-y-[120%] transition-transform duration-300 ease-out z-10 flex flex-col">
-          
-          <!-- Handle (Mobile) -->
-          <div class="w-14 h-1.5 bg-gray-200 rounded-full mx-auto mb-8 md:hidden"></div>
-          
-          <div class="text-center mb-8">
-             <div class="inline-flex items-center justify-center w-20 h-20 bg-primary/10 text-primary rounded-[2rem] text-4xl mb-6 shadow-inner">👋</div>
-             <h3 class="text-3xl md:text-4xl font-black text-gray-800 tracking-tight leading-tight">¿Cómo te llamas?</h3>
-             <p class="text-gray-500 font-medium text-sm mt-3 px-4">Así sabremos a quién avisar cuando tu pedido esté listo.</p>
+      <!-- Footer Info -->
+      <div class="absolute bottom-8 left-0 right-0 text-center opacity-40">
+          <p class="text-[9px] font-black uppercase tracking-[0.5em] text-gray-400 mb-2">Heha Fast Food &bull; 2024</p>
+          <div class="flex justify-center gap-6">
+              <a href="/privacy.html" class="text-[9px] font-black uppercase tracking-widest text-gray-400 hover:text-primary transition">Privacidad</a>
+              <a href="/terms.html" class="text-[9px] font-black uppercase tracking-widest text-gray-400 hover:text-primary transition">Términos</a>
           </div>
-          
-          <div class="space-y-4">
-              <input type="text" id="portal-name-input" 
-                     placeholder="Ej: Carlos..." 
-                     class="w-full px-6 py-5 rounded-[1.5rem] bg-gray-50 border-2 border-transparent focus:border-primary focus:bg-white outline-none text-2xl font-black text-center text-gray-800 placeholder:text-gray-300 placeholder:font-bold transition-all mb-2">
-              
-              <button id="btn-portal-confirm" class="w-full bg-primary text-white font-black py-5 rounded-[1.5rem] shadow-lg shadow-primary/30 hover:bg-orange-600 active:scale-[0.98] transition-all text-xl uppercase tracking-tight flex items-center justify-center gap-3">
-                 Empezar Pedido <span class="bg-white/20 text-white rounded-xl w-8 h-8 flex items-center justify-center text-sm">➔</span>
-              </button>
-              
-              <button id="btn-portal-cancel" class="w-full text-gray-400 font-bold py-4 rounded-[1.5rem] hover:bg-gray-50 transition-colors uppercase tracking-widest text-xs">
-                 Cancelar
-              </button>
-          </div>
-       </div>
+      </div>
     </div>
   `;
 
   document.getElementById('btn-portal-login').addEventListener('click', renderLogin);
-
-  document.getElementById('btn-portal-kiosk').addEventListener('click', () => {
-    const modal = document.getElementById('portal-name-modal');
-    const backdrop = document.getElementById('portal-name-backdrop');
-    const sheet = document.getElementById('portal-name-sheet');
-
-    modal.classList.remove('hidden');
-    // small delay to allow display:block to apply before animating opacity/transform
-    setTimeout(() => {
-      backdrop.classList.remove('opacity-0');
-      backdrop.classList.add('opacity-100');
-      sheet.classList.remove('translate-y-full', 'md:translate-y-[120%]');
-      document.getElementById('portal-name-input').focus();
-    }, 10);
-  });
-
-  const closeModal = () => {
-    const backdrop = document.getElementById('portal-name-backdrop');
-    const sheet = document.getElementById('portal-name-sheet');
-
-    backdrop.classList.remove('opacity-100');
-    backdrop.classList.add('opacity-0');
-    sheet.classList.add('translate-y-full', 'md:translate-y-[120%]');
-
-    setTimeout(() => {
-      document.getElementById('portal-name-modal').classList.add('hidden');
-    }, 300);
-  };
-
-  const confirmName = () => {
-    const name = document.getElementById('portal-name-input').value.trim();
-    if (name) {
-      store.customerName = name;
-      renderKioskMode();
-    } else {
-      showToast('Por favor, ingresa tu nombre', 'error');
+  document.getElementById('btn-google-login').addEventListener('click', async () => {
+    const btn = document.getElementById('btn-google-login');
+    const originalHTML = btn.innerHTML;
+    
+    btn.disabled = true;
+    btn.innerHTML = `
+      <div class="w-full py-4 flex items-center justify-center gap-4">
+        <div class="animate-spin rounded-full h-5 w-5 border-b-2 border-primary"></div>
+        <span class="font-black text-gray-600 uppercase tracking-widest text-xs">Iniciando sesión...</span>
+      </div>
+    `;
+    
+    try {
+      const { error } = await store.loginWithGoogle();
+      if (error) throw error;
+      // If successful, Supabase redirects the page, so no need to reset here
+    } catch (err) {
+      console.error('Google Login Error:', err);
+      showToast(`❌ Error: ${err.message || 'No se pudo iniciar sesión con Google'}`, 'error');
+      
+      // Reset button state
+      btn.disabled = false;
+      btn.innerHTML = originalHTML;
     }
-  };
-
-  document.getElementById('btn-portal-confirm').addEventListener('click', confirmName);
-  document.getElementById('btn-portal-cancel').addEventListener('click', closeModal);
-  document.getElementById('portal-name-backdrop').addEventListener('click', closeModal);
-
-  document.getElementById('portal-name-input').addEventListener('keypress', (e) => {
-    if (e.key === 'Enter') confirmName();
   });
 }
 window.renderPortal = renderPortal;
@@ -2005,12 +1945,16 @@ async function renderKioskManagerView(container) {
     </div>
     `;
 
+  // Filter by today's date (-04:00)
+  const today = new Date(new Date().getTime() - (4 * 60 * 60 * 1000)).toISOString().split('T')[0];
+
   // Fetch pending orders from Kiosco
   const { data: orders, error } = await supabase
     .from('orders')
     .select('*, order_items(*, products(*))')
     .eq('status', 'pending')
     .eq('cashier_name', 'Kiosco')
+    .gte('created_at', today + 'T00:00:00-04:00')
     .order('created_at', { ascending: false });
 
   const listContainer = document.getElementById('kiosk-pending-list');

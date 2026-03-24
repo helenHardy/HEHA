@@ -38,32 +38,50 @@ export const store = {
             // Fetch Role from Profiles
             const { data: profile } = await supabase
                 .from('profiles')
-                .select('role')
+                .select('role, full_name')
                 .eq('id', data.user.id)
                 .single();
 
             this.user = {
                 ...data.user,
-                role: profile ? profile.role : 'cajero' // Default to cashier if no profile found
+                role: profile ? profile.role : 'cajero', // Default to cashier if no profile found
+                full_name: profile?.full_name || data.user.user_metadata?.full_name || data.user.email
             };
             this.notify();
         }
         return { data };
     },
 
+    async loginWithGoogle() {
+        const { data, error } = await supabase.auth.signInWithOAuth({
+            provider: 'google',
+            options: {
+                redirectTo: window.location.origin
+            }
+        });
+        return { data, error };
+    },
+
     async checkSession() {
         const { data } = await supabase.auth.getSession();
         if (data.session?.user) {
+            const user = data.session.user;
             const { data: profile } = await supabase
                 .from('profiles')
-                .select('role')
-                .eq('id', data.session.user.id)
+                .select('role, full_name')
+                .eq('id', user.id)
                 .single();
 
             this.user = {
-                ...data.session.user,
-                role: profile ? profile.role : 'cajero'
+                ...user,
+                role: profile ? profile.role : 'cliente',
+                full_name: profile?.full_name || user.user_metadata?.full_name || user.email
             };
+
+            if (this.user.role === 'cliente') {
+                this.customerName = this.user.full_name;
+            }
+
             this.notify();
             return true;
         }
