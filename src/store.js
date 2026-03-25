@@ -36,15 +36,32 @@ export const store = {
 
         if (data.user) {
             // Fetch Role from Profiles
-            const { data: profile } = await supabase
+            let { data: profile } = await supabase
                 .from('profiles')
                 .select('role, full_name')
                 .eq('id', data.user.id)
-                .single();
+                .maybeSingle();
+
+            if (!profile) {
+                const { data: newProfile } = await supabase
+                    .from('profiles')
+                    .insert({
+                        id: data.user.id,
+                        email: data.user.email,
+                        role: 'cajero', 
+                        full_name: data.user.user_metadata?.full_name || data.user.email
+                    })
+                    .select()
+                    .maybeSingle();
+                profile = newProfile;
+            }
+
+            let role = profile ? profile.role : 'cajero';
+            if (data.user.email === 'admin@gmail.com') role = 'admin';
 
             this.user = {
                 ...data.user,
-                role: profile ? profile.role : 'cajero', // Default to cashier if no profile found
+                role: role,
                 full_name: profile?.full_name || data.user.user_metadata?.full_name || data.user.email
             };
             this.notify();
@@ -66,15 +83,32 @@ export const store = {
         const { data } = await supabase.auth.getSession();
         if (data.session?.user) {
             const user = data.session.user;
-            const { data: profile } = await supabase
+            let { data: profile } = await supabase
                 .from('profiles')
                 .select('role, full_name')
                 .eq('id', user.id)
-                .single();
+                .maybeSingle();
+
+            if (!profile) {
+                const { data: newProfile } = await supabase
+                    .from('profiles')
+                    .insert({
+                        id: user.id,
+                        email: user.email,
+                        role: 'cliente',
+                        full_name: user.user_metadata?.full_name || user.email
+                    })
+                    .select()
+                    .maybeSingle();
+                profile = newProfile;
+            }
+
+            let role = profile ? profile.role : 'cliente';
+            if (user.email === 'admin@gmail.com') role = 'admin';
 
             this.user = {
                 ...user,
-                role: profile ? profile.role : 'cliente',
+                role: role,
                 full_name: profile?.full_name || user.user_metadata?.full_name || user.email
             };
 

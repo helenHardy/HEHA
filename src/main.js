@@ -13,7 +13,7 @@ import { renderInventoryView } from './components/Inventory.js';
 import { renderIngredientManager } from './components/IngredientManager.js';
 
 // Basic Router State
-let currentView = 'dashboard'; // dashboard, pos, reports, products, users, orders, kiosk-orders, cash, kitchen, inventory
+let currentView = localStorage.getItem('heha_current_view') || 'dashboard'; 
 
 const app = document.querySelector('#app');
 
@@ -100,6 +100,32 @@ function setupKioskRealtime() {
     .subscribe();
 }
 
+// REALTIME: Global Chat Listener for Staff
+let globalChatSubscription = null;
+function setupChatRealtime() {
+  if (globalChatSubscription) return;
+
+  globalChatSubscription = supabase
+    .channel('global-chat-channel')
+    .on(
+      'postgres_changes',
+      { event: 'INSERT', schema: 'public', table: 'order_messages' },
+      (payload) => {
+        // If the sender is not the current admin/cashier user
+        if (payload.new.sender_name !== store.user?.full_name) {
+          playNotificationSound();
+          showToast(`💬 Mensaje de <b>${payload.new.sender_name}</b>: "${payload.new.message.substring(0, 30)}..."`, 'info');
+          
+          // If we are in kiosk-orders view, we might want to refresh badges or specific items
+          if (currentView === 'kiosk-orders') {
+            // refresh content or just let the user open the chat modal
+          }
+        }
+      }
+    )
+    .subscribe();
+}
+
 
 // --- GLOBALS & HELPERS ---
 window.handleLogout = async () => {
@@ -109,8 +135,11 @@ window.handleLogout = async () => {
 
 window.showToast = (message, type = 'success') => {
   const toast = document.createElement('div');
-  toast.className = `fixed bottom-4 right-4 z-[200] px-6 py-3 rounded-2xl shadow-2xl font-bold text-white transition-all transform translate-y-20 animate-fade-in-up ${type === 'success' ? 'bg-green-500' : 'bg-red-500'
-    }`;
+  toast.className = `fixed bottom-4 right-4 z-[200] px-6 py-3 rounded-2xl shadow-2xl font-bold text-white transition-all transform translate-y-20 animate-fade-in-up ${
+    type === 'success' ? 'bg-green-500' : 
+    type === 'info' ? 'bg-blue-500' : 
+    'bg-red-500'
+  }`;
   toast.innerHTML = message;
   document.body.appendChild(toast);
 
@@ -197,75 +226,70 @@ function renderKioskMode() {
 
 // --- VIEW COMPONENTS ---
 
-// PORTAL PAGE (Landing)
+// PORTAL PAGE (Landing - Premium Dark Theme)
 function renderPortal() {
   app.innerHTML = `
-    <div class="min-h-screen w-full bg-[#FAFAFA] flex flex-col items-center justify-center relative overflow-hidden font-sans select-none px-4">
+    <div class="min-h-screen w-full flex flex-col items-center justify-between py-8 px-5 relative overflow-hidden select-none" style="font-family: 'Outfit', sans-serif; background: linear-gradient(165deg, #1c1014 0%, #2d1520 30%, #3d1a28 60%, #1a1a2e 100%);">
       
-      <!-- Premium Background Effects -->
-      <div class="absolute top-0 right-0 w-[40rem] h-[40rem] bg-gradient-to-br from-primary/30 to-orange-500/10 rounded-full blur-[120px] -translate-y-1/2 translate-x-1/3 pointer-events-none opacity-60"></div>
-      <div class="absolute bottom-0 left-0 w-[40rem] h-[40rem] bg-gradient-to-tr from-primary/30 to-yellow-500/10 rounded-full blur-[120px] translate-y-1/3 -translate-x-1/3 pointer-events-none opacity-60"></div>
+      <!-- Ambient Glow Effects -->
+      <div class="absolute top-[-12%] left-[20%] w-[50%] h-[40%] rounded-full blur-[100px] pointer-events-none" style="background: radial-gradient(circle, rgba(234,88,12,0.18) 0%, transparent 70%);"></div>
+      <div class="absolute bottom-[10%] right-[-10%] w-[50%] h-[40%] rounded-full blur-[100px] pointer-events-none" style="background: radial-gradient(circle, rgba(220,38,38,0.1) 0%, transparent 70%);"></div>
+      <div class="absolute top-[50%] left-[-10%] w-[30%] h-[30%] rounded-full blur-[80px] pointer-events-none" style="background: radial-gradient(circle, rgba(251,191,36,0.06) 0%, transparent 70%);"></div>
 
-      <div class="scale-up z-10 flex flex-col items-center max-w-2xl w-full">
-          <!-- Logo & Branding -->
-          <div class="relative group mb-12">
-            <div class="absolute inset-0 bg-white/40 blur-3xl rounded-full scale-125 animate-pulse"></div>
-            <div class="w-32 h-32 md:w-48 md:h-48 relative bg-white/70 backdrop-blur-xl rounded-[3rem] shadow-[0_25px_50px_rgba(0,0,0,0.08)] p-6 flex items-center justify-center border border-white/80 transform transition group-hover:rotate-6 group-hover:scale-105 duration-500">
-               <img src="/logo.png" class="w-full h-full object-contain filter drop-shadow-2xl z-10" onerror="this.src='https://placehold.co/400x400?text=HEHA'">
-            </div>
+      <!-- Hero Logo (The star of the show) -->
+      <div class="z-10 animate-fade-in flex flex-col items-center mt-6 md:mt-10">
+          <div class="relative">
+              <div class="absolute inset-0 blur-[40px] rounded-full" style="background: rgba(234,88,12,0.3); transform: scale(1.3);"></div>
+              <div class="w-56 h-40 md:w-80 md:h-56 relative flex items-center justify-center transform hover:scale-105 transition-transform duration-500 animate-float">
+                  <img src="/logo.png" class="w-full h-full object-contain filter drop-shadow-[0_15px_35px_rgba(234,88,12,0.4)]" onerror="this.src='https://placehold.co/400x300?text=HEHA'">
+              </div>
           </div>
-          
-          <div class="text-center mb-10">
-              <h1 class="text-5xl md:text-8xl font-[1000] text-gray-800 tracking-tighter uppercase leading-none mb-4">
-                 HEHA <span class="text-primary">FOOD</span>
-              </h1>
-              <p class="text-gray-400 font-black uppercase tracking-[0.4em] text-xs">Sabor que te mueve</p>
-          </div>
+          <p class="font-black uppercase tracking-[0.5em] text-[9px] md:text-[11px] mt-4 px-6 py-2 rounded-full" style="color: #fbbf24; background: rgba(251,191,36,0.06); border: 1px solid rgba(251,191,36,0.12);">✨ Sabor que te mueve ✨</p>
+      </div>
 
-          <!-- Professional Description (Required for Google Verification) -->
-          <div class="bg-white/50 backdrop-blur-sm border border-gray-100 rounded-[2.5rem] p-8 md:p-12 mb-10 text-center shadow-sm max-w-lg">
-              <h2 class="text-xl font-black text-gray-800 uppercase tracking-tight mb-4">Sistema de Pedidos Inteligente</h2>
-              <p class="text-gray-500 font-medium leading-relaxed">
-                  Bienvenido a la plataforma oficial de <b>HEHA Fast Food</b>. 
-                  Inicia sesión de forma segura para realizar tus pedidos, personalizar tu menú y agilizar tu experiencia en nuestras sucursales.
+      <!-- Main Content Card -->
+      <div class="z-10 w-full max-w-sm md:max-w-md flex flex-col items-center animate-slide-in-bottom -mt-2">
+          <div class="rounded-[2rem] p-7 md:p-10 text-center w-full mb-5 relative overflow-hidden" style="background: rgba(255,255,255,0.04); backdrop-filter: blur(20px); border: 1px solid rgba(255,255,255,0.08); box-shadow: 0 25px 50px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.06);">
+              
+              <h2 class="text-2xl md:text-3xl font-black mb-3 leading-[1.15] tracking-tight" style="color: #faf5ff;">
+                  ¿Listo para<br><span style="background: linear-gradient(135deg, #ea580c, #fbbf24); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">tu mejor pedido?</span>
+              </h2>
+              <p class="font-medium leading-relaxed mb-7 text-[13px] md:text-base" style="color: rgba(214,211,209,0.55);">
+                  Pide rápido, recibe caliente y disfruta del auténtico sabor <b style="color: #fb923c;">HEHA</b>.
               </p>
-          </div>
 
-          <!-- Main Action: Google Login -->
-          <div class="w-full max-w-sm">
-              <button id="btn-google-login" class="w-full group bg-white border border-gray-100 p-1 rounded-[2.2rem] shadow-[0_20px_40px_rgba(0,0,0,0.05)] hover:shadow-[0_25px_50px_rgba(0,0,0,0.12)] transition-all duration-500 active:scale-[0.98] flex items-center relative overflow-hidden">
-                  <div class="absolute inset-0 bg-gradient-to-r from-gray-50 to-white opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
-                  
-                  <div class="w-16 h-16 bg-white rounded-[2rem] flex items-center justify-center shadow-sm relative z-10 border border-gray-50 flex-shrink-0 ml-1">
-                     <svg width="28" height="28" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
-                        <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.21v2.81C4.07 20.59 7.77 23 12 23z" fill="#34A853"/>
-                        <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.09H2.21C1.45 8.57 1 10.23 1 12s.45 3.43 1.21 4.91l3.63-2.82z" fill="#FBBC05"/>
-                        <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.77 1 4.07 3.41 2.21 6.91l3.63 2.82c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
-                     </svg>
-                  </div>
-                  
-                  <div class="flex-1 text-center pr-10 md:pr-14 relative z-10">
-                      <span class="text-[10px] font-black text-gray-400 uppercase tracking-[0.3em] block mb-0.5 opacity-70">Acceso Seguro</span>
-                      <span class="text-xl font-black text-gray-800 tracking-tight">Continuar con Google</span>
-                  </div>
-              </button>
+              <!-- CTA Button -->
+              <div class="flex flex-col items-center gap-3">
+                  <button id="btn-google-login" class="w-full h-[3.5rem] md:h-16 text-white rounded-2xl transition-all duration-300 transform active:scale-[0.97] flex items-center justify-center gap-3 group relative overflow-hidden" style="background: linear-gradient(135deg, #ea580c 0%, #dc2626 100%); box-shadow: 0 10px 30px rgba(234,88,12,0.35), inset 0 1px 0 rgba(255,255,255,0.15);">
+                      <div class="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300" style="background: linear-gradient(135deg, #c2410c 0%, #b91c1c 100%);"></div>
+                      <div class="w-9 h-9 md:w-10 md:h-10 bg-white rounded-xl flex items-center justify-center shadow-md group-hover:scale-110 transition-transform relative z-10">
+                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                              <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+                              <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.21v2.81C4.07 20.59 7.77 23 12 23z" fill="#34A853"/>
+                              <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.09H2.21C1.45 8.57 1 10.23 1 12s.45 3.43 1.21 4.91l3.63-2.82z" fill="#FBBC05"/>
+                              <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.77 1 4.07 3.41 2.21 6.91l3.63 2.82c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+                          </svg>
+                      </div>
+                      <span class="text-[15px] md:text-lg font-black tracking-tight relative z-10">Continuar con Google</span>
+                  </button>
+                  <p class="text-[8px] font-bold uppercase tracking-[0.2em]" style="color: rgba(168,162,158,0.35);">🔒 Conexión segura</p>
+              </div>
           </div>
 
           <!-- Staff Access -->
-          <button id="btn-portal-login" class="mt-16 flex items-center gap-3 text-gray-300 hover:text-primary font-black text-[10px] uppercase tracking-[0.3em] transition-all p-4 hover:scale-105">
-              <span class="w-8 h-8 rounded-full border border-gray-100 flex items-center justify-center text-xs">🔐</span>
-              Panel de Administración
+          <button id="btn-portal-login" class="flex items-center gap-2.5 transition-all p-2 group">
+              <div class="w-7 h-7 rounded-lg flex items-center justify-center text-[9px] font-black group-hover:scale-110 transition-transform" style="background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.06); color: rgba(168,162,158,0.35);">🔐</div>
+              <span class="text-[8px] font-black uppercase tracking-[0.4em] group-hover:text-orange-400 transition-colors" style="color: rgba(168,162,158,0.3);">Personal</span>
           </button>
       </div>
 
-      <!-- Professional Footer Info with visible links -->
-      <div class="absolute bottom-8 left-0 right-0 text-center">
-          <p class="text-[9px] font-black uppercase tracking-[0.5em] text-gray-400 mb-4 opacity-50">Heha Fast Food &bull; Santa Cruz, Bolivia</p>
-          <div class="flex justify-center gap-8">
-              <a href="/privacy.html" class="text-[10px] font-black uppercase tracking-[0.2em] text-gray-400 hover:text-black border-b border-transparent hover:border-black transition-all py-1">Política de Privacidad</a>
-              <a href="/terms.html" class="text-[10px] font-black uppercase tracking-[0.2em] text-gray-400 hover:text-black border-b border-transparent hover:border-black transition-all py-1">Términos de Uso</a>
+      <!-- Footer -->
+      <div class="z-10 w-full flex flex-col items-center gap-3 pb-2 animate-fade-in">
+          <div class="flex gap-6 pb-2 w-full justify-center" style="border-bottom: 1px solid rgba(255,255,255,0.04);">
+              <a href="/privacy.html" class="text-[8px] font-bold uppercase tracking-[0.15em] hover:text-orange-400 transition-all" style="color: rgba(168,162,158,0.3);">Privacidad</a>
+              <a href="/terms.html" class="text-[8px] font-bold uppercase tracking-[0.15em] hover:text-orange-400 transition-all" style="color: rgba(168,162,158,0.3);">Términos</a>
           </div>
+          <p class="text-[7px] font-bold uppercase tracking-[0.4em]" style="color: rgba(168,162,158,0.15);">HEHA &bull; Santa Cruz, Bolivia</p>
       </div>
     </div>
   `;
@@ -388,6 +412,7 @@ function renderOpenRegisterModal() {
 async function renderAuthenticatedLayout() {
   // Start Realtime for staff
   setupKioskRealtime();
+  setupChatRealtime();
 
   const isCollapsed = store.uiState.isSidebarCollapsed;
   const isMobileOpen = store.uiState.isMobileMenuOpen;
@@ -699,6 +724,12 @@ async function renderAuthenticatedLayout() {
 }
 
 // --- NAVIGATION HELPERS ---
+window.setView = (view) => {
+  currentView = view;
+  localStorage.setItem('heha_current_view', view);
+  render();
+};
+
 function renderNavLink(view, icon, label, isCollapsed, showBadge = false) {
   const active = currentView === view;
   const activeClass = 'bg-primary text-white font-black shadow-lg shadow-primary/20 scale-[1.02]';
@@ -1936,10 +1967,15 @@ async function renderKioskManagerView(container) {
                <h2 class="text-4xl font-black text-gray-800 tracking-tight">Pedidos Kiosco</h2>
                <p class="text-xs text-gray-400 font-bold uppercase tracking-[0.2em] mt-1">Aprobación y Cobro de Clientes en Auto-servicio</p>
             </div>
-            <button onclick="setView('kiosk-orders')" class="group flex items-center gap-2 bg-white px-6 py-3 rounded-2xl shadow-sm hover:shadow-md border border-gray-100 transition-all active:scale-95 font-black text-xs uppercase tracking-widest text-gray-600">
-               <span class="group-hover:rotate-180 transition-transform duration-500">🔄</span> 
-               Actualizar Lista
-            </button>
+            <div class="flex gap-3">
+              <button onclick="window.openStaffChat(null, 'Consulta General')" class="flex items-center gap-2 bg-black text-white px-6 py-3 rounded-2xl shadow-xl hover:scale-105 transition-all active:scale-95 font-black text-xs uppercase tracking-widest">
+                 <span class="text-lg">💬</span> Chat General
+              </button>
+              <button onclick="setView('kiosk-orders')" class="group flex items-center gap-2 bg-white px-6 py-3 rounded-2xl shadow-sm hover:shadow-md border border-gray-100 transition-all active:scale-95 font-black text-xs uppercase tracking-widest text-gray-600">
+                 <span class="group-hover:rotate-180 transition-transform duration-500">🔄</span> 
+                 Actualizar
+              </button>
+            </div>
         </div>
 
         <div id="kiosk-pending-list" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
@@ -2016,7 +2052,11 @@ async function renderKioskManagerView(container) {
             <div>
                 <div class="flex items-center gap-2 mb-2">
                   <span class="px-2 py-1 bg-primary text-white text-[8px] font-black rounded-lg uppercase tracking-widest">PEDIDO #${String(order.id).slice(-4)}</span>
-                  <span class="bg-gray-100 text-gray-400 px-2 py-1 text-[8px] font-black rounded-lg uppercase tracking-widest">🕒 ${time}</span>
+                  ${order.scheduled_time ? `
+                    <span class="bg-black text-primary px-2 py-1 text-[8px] font-black rounded-lg uppercase tracking-widest animate-pulse ring-2 ring-primary/20">📅 RESERVA: ${new Date(order.scheduled_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                  ` : `
+                    <span class="bg-gray-100 text-gray-400 px-2 py-1 text-[8px] font-black rounded-lg uppercase tracking-widest">🕒 ${time}</span>
+                  `}
                 </div>
                 <h3 class="text-2xl font-[1000] text-gray-900 tracking-tighter capitalize truncate w-full">${(order.customer_name || 'Cliente').toLowerCase()}</h3>
             </div>
@@ -2051,8 +2091,16 @@ async function renderKioskManagerView(container) {
                 </button>
             </div>
 
-            <button onclick="window.rejectKioskOrder('${order.id}')" 
-                    class="w-full py-3 bg-gray-50 hover:bg-red-50 text-gray-300 hover:text-red-400 rounded-xl transition font-black text-[9px] uppercase tracking-[0.2em] border border-transparent hover:border-red-100">
+            <div class="flex gap-2">
+                <button onclick="window.openStaffChat('${order.id}', '${order.customer_name}')" 
+                        class="flex-1 py-4 bg-gray-900 text-white rounded-2xl transition-all active:scale-95 font-black text-[10px] uppercase tracking-[0.2em] flex items-center justify-center gap-2 hover:bg-black shadow-lg shadow-black/10">
+                    <span class="text-lg">💬</span> CHAT CLIENTE
+                </button>
+                <button onclick="window.rejectKioskOrder('${order.id}')" 
+                        class="px-5 py-4 bg-gray-50 hover:bg-red-50 text-gray-300 hover:text-red-400 rounded-2xl transition-all font-black text-xs border border-transparent hover:border-red-100">
+                    ✕
+                </button>
+            </div>
                 Rechazar / Eliminar Pedido
             </button>
         </div>
@@ -2169,6 +2217,95 @@ window.rejectKioskOrder = async (orderId) => {
     console.error(err);
     showToast('❌ Error al eliminar pedido', 'error');
   }
+};
+
+window.openStaffChat = async (orderId, customerName) => {
+  // Create Modal element if not exists
+  let modal = document.getElementById('staff-chat-modal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'staff-chat-modal';
+    modal.className = 'fixed inset-0 z-[200] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in hidden';
+    document.body.appendChild(modal);
+  }
+
+  modal.classList.remove('hidden');
+  modal.innerHTML = `
+    <div class="bg-white w-full max-w-lg rounded-[2.5rem] shadow-2xl overflow-hidden flex flex-col max-h-[80vh] animate-slide-in-bottom">
+        <div class="p-6 bg-gray-900 text-white flex justify-between items-center">
+            <div>
+                <h3 class="font-black text-xl tracking-tight">${orderId ? `Chat con ${customerName}` : 'Consultas Generales'}</h3>
+                <p class="text-[10px] font-bold text-primary uppercase tracking-widest mt-1">${orderId ? `Pedido #${String(orderId).slice(-4)}` : 'Atención al Cliente'}</p>
+            </div>
+            <button onclick="document.getElementById('staff-chat-modal').classList.add('hidden')" class="p-2 hover:bg-white/10 rounded-full transition">✕</button>
+        </div>
+        
+        <div id="staff-chat-messages" class="flex-1 overflow-y-auto p-6 space-y-4 bg-gray-50/50 min-h-[300px]">
+            <div class="flex justify-center py-10">
+                <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
+            </div>
+        </div>
+
+        <div class="p-4 bg-white border-t border-gray-100 flex gap-2">
+            <input type="text" id="staff-chat-input" placeholder="Escribe un mensaje..." 
+                   class="flex-1 px-4 py-3 bg-gray-50 rounded-xl outline-none font-medium focus:ring-2 focus:ring-primary/20 transition">
+            <button id="staff-chat-send" class="bg-primary text-white px-6 rounded-xl font-black text-xs uppercase tracking-widest hover:scale-105 active:scale-95 transition">Enviar</button>
+        </div>
+    </div>
+  `;
+
+  const messagesDiv = document.getElementById('staff-chat-messages');
+  const input = document.getElementById('staff-chat-input');
+  const sendBtn = document.getElementById('staff-chat-send');
+
+  const loadMessages = async () => {
+    let query = supabase.from('order_messages').select('*');
+    if (orderId) query = query.eq('order_id', orderId);
+    else query = query.is('order_id', null);
+    
+    const { data: msgs, error } = await query.order('created_at', { ascending: true });
+
+    if (!error) {
+      messagesDiv.innerHTML = msgs.map(m => `
+        <div class="flex ${m.sender_name === store.user.full_name ? 'justify-end' : 'justify-start'}">
+            <div class="max-w-[80%] px-4 py-2.5 rounded-2xl ${m.sender_name === store.user.full_name ? 'bg-gray-900 text-white rounded-tr-none' : 'bg-white border border-gray-100 text-gray-800 rounded-tl-none shadow-sm'}">
+                <p class="text-xs font-medium leading-relaxed">${m.message}</p>
+                <p class="text-[8px] mt-1 opacity-50 font-black uppercase text-right">${new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
+            </div>
+        </div>
+      `).join('') || '<div class="text-center text-gray-400 py-10 text-xs font-black uppercase tracking-widest">No hay mensajes aún</div>';
+      messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    }
+  };
+
+  await loadMessages();
+
+  // RT listener for this specific chat
+  const channel = supabase
+    .channel(`staff-chat-${orderId || 'general'}`)
+    .on('postgres_changes', { 
+        event: 'INSERT', 
+        schema: 'public', 
+        table: 'order_messages', 
+        filter: orderId ? `order_id=eq.${orderId}` : `order_id=is.null` 
+    }, () => {
+      loadMessages();
+    })
+    .subscribe();
+
+  const sendMessage = async () => {
+    const msg = input.value.trim();
+    if (!msg) return;
+    input.value = '';
+    await supabase.from('order_messages').insert({
+      order_id: orderId,
+      sender_name: store.user.full_name,
+      message: msg
+    });
+  };
+
+  sendBtn.onclick = sendMessage;
+  input.onkeypress = (e) => { if (e.key === 'Enter') sendMessage(); };
 };
 
 // Initial
