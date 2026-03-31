@@ -3,7 +3,7 @@ import { store } from '../store.js';
 
 export async function renderIngredientManager(container) {
     container.innerHTML = `
-    <div class="flex flex-col h-full animate-fade-in">
+    <div class="flex flex-col animate-fade-in pb-20">
         <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
             <div>
                 <h2 class="text-3xl font-[1000] text-gray-900 tracking-tighter uppercase italic leading-none">
@@ -24,7 +24,7 @@ export async function renderIngredientManager(container) {
             <!-- Filled by JS -->
         </div>
 
-        <div class="bg-white rounded-[2.5rem] shadow-[0_20px_50px_rgba(0,0,0,0.04)] border border-gray-100 overflow-hidden flex-1 flex flex-col">
+        <div class="bg-white rounded-[2.5rem] shadow-[0_20px_50px_rgba(0,0,0,0.04)] border border-gray-100 overflow-visible flex-1 flex flex-col">
             <div class="overflow-x-auto">
                 <table class="w-full text-left border-collapse">
                     <thead>

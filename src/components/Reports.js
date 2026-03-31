@@ -126,7 +126,8 @@ export async function getWeeklySales() {
 
     const dailyTotals = {};
     orders.forEach(o => {
-        const date = o.created_at.split('T')[0];
+        // Adjust for Bolivia Timezone (UTC-4) before grouping
+        const date = new Date(new Date(o.created_at).getTime() - (4 * 60 * 60 * 1000)).toISOString().split('T')[0];
         dailyTotals[date] = (dailyTotals[date] || 0) + (o.total_amount || 0);
     });
 

@@ -40,22 +40,29 @@ setInterval(updateKioskBadge, 10000); // Check every 10s
 // Play notification sound
 function playNotificationSound() {
   const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-  const oscillator = audioContext.createOscillator();
-  const gainNode = audioContext.createGain();
+  
+  // WhatsApp-style "Ding" is usually two short, high-pitched tones
+  const playTone = (freq, startTime, duration) => {
+    const osc = audioContext.createOscillator();
+    const gain = audioContext.createGain();
+    
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(freq, startTime);
+    
+    gain.gain.setValueAtTime(0, startTime);
+    gain.gain.linearRampToValueAtTime(0.3, startTime + 0.05);
+    gain.gain.exponentialRampToValueAtTime(0.01, startTime + duration);
+    
+    osc.connect(gain);
+    gain.connect(audioContext.destination);
+    
+    osc.start(startTime);
+    osc.stop(startTime + duration);
+  };
 
-  oscillator.connect(gainNode);
-  gainNode.connect(audioContext.destination);
-
-  oscillator.type = 'sine';
-  oscillator.frequency.setValueAtTime(880, audioContext.currentTime); // A5
-  oscillator.frequency.exponentialRampToValueAtTime(440, audioContext.currentTime + 0.5); // A4
-
-  gainNode.gain.setValueAtTime(0, audioContext.currentTime);
-  gainNode.gain.linearRampToValueAtTime(0.5, audioContext.currentTime + 0.1);
-  gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
-
-  oscillator.start(audioContext.currentTime);
-  oscillator.stop(audioContext.currentTime + 0.5);
+  const now = audioContext.currentTime;
+  playTone(1320, now, 0.4);      // E6
+  playTone(1056, now + 0.1, 0.5); // C6
 }
 window.playNotificationSound = playNotificationSound;
 
@@ -829,7 +836,38 @@ async function loadProducts() {
     allProducts = data;
     renderCategories();
     renderProductGrid();
+    setupProductsRealtime();
   }
+}
+
+let productsSubscription = null;
+function setupProductsRealtime() {
+  if (productsSubscription) return;
+
+  productsSubscription = supabase
+    .channel('pos-products-realtime')
+    .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'products' },
+        async (payload) => {
+            console.log('📦 Product change detected!', payload);
+            // Re-fetch to get fresh data
+            const { data } = await supabase.from('products').select('*').order('name');
+            if (data) {
+                allProducts = data;
+                // Only re-render if we are in the POS view
+                if (currentView === 'pos') {
+                    renderProductGrid();
+                    renderCategories();
+                } else if (currentView === 'products') {
+                    // Also refresh Product Manager if currently open
+                    const container = document.getElementById('page-content');
+                    if (container) renderProductManager(container);
+                }
+            }
+        }
+    )
+    .subscribe();
 }
 
 function renderCategories() {
@@ -869,21 +907,32 @@ function renderProductGrid() {
     return;
   }
 
-  container.innerHTML = filtered.map(p => `
-      <div class="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-xl hover:-translate-y-1 transition-all duration-300 cursor-pointer flex flex-col group animate-fade-in-up" onclick="showQuantityModal(${p.id})">
-         <div class="h-40 bg-gray-50 relative overflow-hidden">
-           <img src="${p.image_url}" class="w-full h-full object-cover group-hover:scale-110 transition duration-700" onerror="this.src='https://placehold.co/400x300?text=${p.name}'">
+  container.innerHTML = filtered.map(p => {
+    const isUnavailable = p.is_available === false;
+    return `
+      <div class="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-xl hover:-translate-y-1 transition-all duration-300 cursor-pointer flex flex-col group animate-fade-in-up relative ${isUnavailable ? 'opacity-60' : ''}" 
+           onclick="${isUnavailable ? `showToast('🚫 Este producto está marcado como agotado', 'error')` : `showQuantityModal(${p.id})`}">
+         
+         <div class="h-40 bg-gray-50 relative overflow-hidden text-gray-800">
+           <img src="${p.image_url}" class="w-full h-full object-cover group-hover:scale-110 transition duration-700 ${isUnavailable ? 'grayscale' : ''}" onerror="this.src='https://placehold.co/400x300?text=${p.name}'">
            <div class="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent"></div>
            <div class="absolute bottom-3 right-3 bg-primary text-white px-3 py-1 rounded-full text-sm font-black shadow-lg">
               Bs. ${p.price}
            </div>
+           
+           ${isUnavailable ? `
+             <div class="absolute inset-0 flex items-center justify-center bg-black/10 backdrop-blur-[1px]">
+               <span class="bg-red-600/90 text-white text-[10px] font-black px-4 py-1.5 rounded-full uppercase tracking-widest shadow-lg transform -rotate-12 border-2 border-white/20">AGOTADO</span>
+             </div>
+           ` : ''}
          </div>
          <div class="p-4 flex-1 flex flex-col justify-between capitalize">
            <h3 class="font-black text-gray-800 leading-tight group-hover:text-primary transition-colors">${p.name.toLowerCase()}</h3>
            <p class="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-2">${p.category || 'General'}</p>
          </div>
       </div>
-  `).join('');
+    `;
+  }).join('');
 }
 
 // --- LOGIC HELPERS ---
@@ -1951,7 +2000,8 @@ async function renderOrdersHistory(container) {
     .order('created_at', { ascending: false });
 
   if (!error) {
-    allOrders = orders || [];
+    // Filter out pending AND rejected Kiosk orders — they should NOT appear in Pedidos del Día
+    allOrders = (orders || []).filter(o => !(o.cashier_name === 'Kiosco' && (o.status === 'pending' || o.status === 'rejected')));
     renderList();
   } else {
     showToast('Error al cargar historial', 'error');
@@ -1992,8 +2042,6 @@ async function renderKioskManagerView(container) {
     </div>
     `;
 
-  // Filter by today's date (-04:00)
-  const today = new Date(new Date().getTime() - (4 * 60 * 60 * 1000)).toISOString().split('T')[0];
 
   // Fetch pending orders from Kiosco
   const { data: orders, error } = await supabase
@@ -2001,7 +2049,6 @@ async function renderKioskManagerView(container) {
     .select('*, order_items(*, products(*))')
     .eq('status', 'pending')
     .eq('cashier_name', 'Kiosco')
-    .gte('created_at', today + 'T00:00:00-04:00')
     .order('created_at', { ascending: false });
 
   const listContainer = document.getElementById('kiosk-pending-list');
@@ -2097,12 +2144,10 @@ async function renderKioskManagerView(container) {
                     <span class="text-lg">💬</span> CHAT CLIENTE
                 </button>
                 <button onclick="window.rejectKioskOrder('${order.id}')" 
-                        class="px-5 py-4 bg-gray-50 hover:bg-red-50 text-gray-300 hover:text-red-400 rounded-2xl transition-all font-black text-xs border border-transparent hover:border-red-100">
-                    ✕
+                        class="px-5 py-4 bg-gray-50 hover:bg-red-50 text-gray-300 hover:text-red-400 rounded-2xl transition-all font-black text-[10px] uppercase tracking-widest border border-transparent hover:border-red-100">
+                    ✕ Rechazar
                 </button>
             </div>
-                Rechazar / Eliminar Pedido
-            </button>
         </div>
     </div>
     `;
@@ -2201,25 +2246,33 @@ window.approveKioskOrder = async (orderId, method = 'cash') => {
 };
 
 window.rejectKioskOrder = async (orderId) => {
-  if (!confirm('¿Seguro que deseas ELIMINAR este pedido pendiente?')) return;
+  if (!confirm('¿Seguro que deseas RECHAZAR este pedido?')) return;
 
   try {
+    const numericId = parseInt(orderId);
     const { error } = await supabase
       .from('orders')
-      .delete()
-      .eq('id', orderId);
+      .update({ status: 'rejected' })
+      .eq('id', numericId)
+      .select();
 
     if (error) throw error;
 
-    showToast('🗑️ Pedido eliminado correctamente');
+    showToast('❌ Pedido rechazado', 'success');
     setView('kiosk-orders');
   } catch (err) {
     console.error(err);
-    showToast('❌ Error al eliminar pedido', 'error');
+    showToast('❌ Error al rechazar pedido', 'error');
   }
 };
 
 window.openStaffChat = async (orderId, customerName) => {
+  // Cleanup previous staff chat channel
+  if (window.staffChatChannel) {
+    window.staffChatChannel.unsubscribe();
+    window.staffChatChannel = null;
+  }
+
   // Create Modal element if not exists
   let modal = document.getElementById('staff-chat-modal');
   if (!modal) {
@@ -2237,7 +2290,7 @@ window.openStaffChat = async (orderId, customerName) => {
                 <h3 class="font-black text-xl tracking-tight">${orderId ? `Chat con ${customerName}` : 'Consultas Generales'}</h3>
                 <p class="text-[10px] font-bold text-primary uppercase tracking-widest mt-1">${orderId ? `Pedido #${String(orderId).slice(-4)}` : 'Atención al Cliente'}</p>
             </div>
-            <button onclick="document.getElementById('staff-chat-modal').classList.add('hidden')" class="p-2 hover:bg-white/10 rounded-full transition">✕</button>
+            <button onclick="window.closeStaffChat()" class="p-2 hover:bg-white/10 rounded-full transition">✕</button>
         </div>
         
         <div id="staff-chat-messages" class="flex-1 overflow-y-auto p-6 space-y-4 bg-gray-50/50 min-h-[300px]">
@@ -2269,6 +2322,7 @@ window.openStaffChat = async (orderId, customerName) => {
       messagesDiv.innerHTML = msgs.map(m => `
         <div class="flex ${m.sender_name === store.user.full_name ? 'justify-end' : 'justify-start'}">
             <div class="max-w-[80%] px-4 py-2.5 rounded-2xl ${m.sender_name === store.user.full_name ? 'bg-gray-900 text-white rounded-tr-none' : 'bg-white border border-gray-100 text-gray-800 rounded-tl-none shadow-sm'}">
+                <p class="text-[9px] font-bold uppercase tracking-wider mb-0.5 ${m.sender_name === store.user.full_name ? 'text-primary' : 'text-gray-400'}">${m.sender_name}</p>
                 <p class="text-xs font-medium leading-relaxed">${m.message}</p>
                 <p class="text-[8px] mt-1 opacity-50 font-black uppercase text-right">${new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
             </div>
@@ -2281,8 +2335,8 @@ window.openStaffChat = async (orderId, customerName) => {
   await loadMessages();
 
   // RT listener for this specific chat
-  const channel = supabase
-    .channel(`staff-chat-${orderId || 'general'}`)
+  window.staffChatChannel = supabase
+    .channel(`staff-chat-${orderId || 'general'}-${Date.now()}`)
     .on('postgres_changes', { 
         event: 'INSERT', 
         schema: 'public', 
@@ -2306,6 +2360,15 @@ window.openStaffChat = async (orderId, customerName) => {
 
   sendBtn.onclick = sendMessage;
   input.onkeypress = (e) => { if (e.key === 'Enter') sendMessage(); };
+};
+
+window.closeStaffChat = () => {
+  if (window.staffChatChannel) {
+    window.staffChatChannel.unsubscribe();
+    window.staffChatChannel = null;
+  }
+  const modal = document.getElementById('staff-chat-modal');
+  if (modal) modal.classList.add('hidden');
 };
 
 // Initial

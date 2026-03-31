@@ -126,6 +126,14 @@ export async function renderProductManager(container) {
                    <input type="number" id="prod-stock" placeholder="0" class="w-full px-6 py-4 rounded-2xl bg-gray-50 border-none focus:ring-2 focus:ring-orange-500/20 outline-none font-black text-xl text-orange-500">
               </div>
 
+              <div class="col-span-1">
+                   <label class="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 font-mono">Disponibilidad</label>
+                   <div class="flex items-center gap-4 bg-gray-50 px-6 py-4 rounded-2xl h-[58px]">
+                       <input type="checkbox" id="prod-available" class="w-5 h-5 accent-green-500" checked>
+                       <span class="text-xs font-bold text-gray-600 uppercase">Disponible</span>
+                   </div>
+              </div>
+
               <div class="col-span-2">
                    <label class="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">Descripción Corta</label>
                    <textarea id="prod-desc" placeholder="Detalles de los ingredientes o preparación..." class="w-full px-6 py-4 rounded-2xl bg-gray-50 border-none focus:ring-2 focus:ring-primary/20 outline-none font-medium text-sm scrollbar-hide" rows="3"></textarea>
@@ -224,6 +232,7 @@ export async function renderProductManager(container) {
                         <tr class="bg-gray-50/50">
                           <th class="py-5 px-10 text-[10px] font-black text-gray-400 uppercase tracking-widest">Plato</th>
                           <th class="py-5 px-4 text-[10px] font-black text-gray-400 uppercase tracking-widest text-right">Costo</th>
+                          <th class="py-5 px-4 text-[10px] font-black text-gray-400 uppercase tracking-widest text-right">Estatus</th>
                           <th class="py-5 px-4 text-[10px] font-black text-gray-400 uppercase tracking-widest text-right">Stock</th>
                           <th class="py-5 px-4 text-[10px] font-black text-gray-400 uppercase tracking-widest text-right">Precio</th>
                           <th class="py-5 px-10 text-[10px] font-black text-gray-400 uppercase tracking-widest text-right">Acciones</th>
@@ -246,6 +255,15 @@ export async function renderProductManager(container) {
                             </td>
                             <td class="py-5 px-4 text-right">
                                <p class="font-bold text-xs text-gray-400 font-mono">Bs. ${p.cost.toFixed(2)}</p>
+                            </td>
+                            <td class="py-5 px-4 text-right">
+                               <div class="flex flex-col items-end">
+                                  <button onclick="window.toggleProductAvailability(${p.id}, ${p.is_available === false ? 'true' : 'false'})" 
+                                          class="px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all
+                                          ${p.is_available !== false ? 'bg-green-50 text-green-600 border border-green-100 hover:bg-green-100' : 'bg-red-50 text-red-600 border border-red-100 hover:bg-red-100'}">
+                                     ${p.is_available !== false ? '✅ Activo' : '🚫 Agotado'}
+                                  </button>
+                               </div>
                             </td>
                             <td class="py-5 px-4 text-right">
                                <div class="flex flex-col items-end">
@@ -471,6 +489,7 @@ export async function renderProductManager(container) {
     const cost = document.getElementById('prod-cost').value;
     const category = document.getElementById('prod-category').value;
     const track_stock = document.getElementById('prod-track-stock').checked;
+    const is_available = document.getElementById('prod-available').checked;
     const stock = document.getElementById('prod-stock').value;
     const image_url = document.getElementById('prod-image-url').value || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c';
     const description = document.getElementById('prod-desc').value;
@@ -486,6 +505,7 @@ export async function renderProductManager(container) {
       cost: parseFloat(cost) || 0,
       category,
       track_stock,
+      is_available,
       stock: parseInt(stock) || 0,
       image_url,
       description
@@ -552,6 +572,7 @@ export async function renderProductManager(container) {
       document.getElementById('prod-cost').value = p.cost;
       document.getElementById('prod-category').value = p.category || 'General';
       document.getElementById('prod-track-stock').checked = p.track_stock || false;
+      document.getElementById('prod-available').checked = p.is_available !== false;
       document.getElementById('prod-stock').value = p.stock || 0;
       document.getElementById('prod-image-url').value = p.image_url;
       document.getElementById('prod-desc').value = p.description;
@@ -580,6 +601,15 @@ export async function renderProductManager(container) {
     renderProductManager(container);
   };
 
+  window.toggleProductAvailability = async (id, newStatus) => {
+    const { error } = await supabase.from('products').update({ is_available: newStatus }).eq('id', id);
+    if (error) showToast('Error al actualizar disponibilidad', 'error');
+    else {
+      showToast(newStatus ? '✅ Producto disponible' : '🚫 Producto marcado como agotado');
+      renderProductManager(container);
+    }
+  };
+
   window.deleteProduct = async (id) => {
     if (!confirm('¿Eliminar este plato del menú permanentemente?')) return;
     const { error } = await supabase.from('products').delete().eq('id', id);
@@ -601,7 +631,9 @@ function clearFormFields() {
   });
 
   const trackStock = document.getElementById('prod-track-stock');
+  const available = document.getElementById('prod-available');
   if (trackStock) trackStock.checked = false;
+  if (available) available.checked = true;
 
   const preview = document.getElementById('prod-preview');
   const placeholder = document.getElementById('upload-placeholder');

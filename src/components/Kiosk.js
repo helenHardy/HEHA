@@ -3,18 +3,36 @@ import { supabase } from '../services/supabase.js';
 import { generateReceiptHTML, printTicket } from '../utils/printer.js';
 
 // Estado interno del Kiosco
+// Restore active order from localStorage if exists
+const savedOrder = JSON.parse(localStorage.getItem('heha_active_order') || 'null');
+
 let kioskState = {
-    screen: 'menu', // menu, cart, success
-    diningOption: 'eat-in', // eat-in, takeout
+    screen: savedOrder ? 'success' : 'menu',
+    diningOption: 'eat-in',
     isReservation: false,
     reservationTime: '',
-    lastOrderId: null,
+    lastOrderId: savedOrder?.orderId || null,
     activeCategory: 'Todos',
-    modalProduct: null, // Product Object if modal is open
+    modalProduct: null,
     isChatOpen: false,
     messages: [],
-    orderStatus: 'pending' // pending, completed, cancelled
+    orderStatus: savedOrder?.status || 'pending',
+    kitchenStatus: savedOrder?.kitchenStatus || 'pending'
 };
+
+// Helper: persist active order to localStorage
+function saveActiveOrder() {
+    if (kioskState.lastOrderId) {
+        localStorage.setItem('heha_active_order', JSON.stringify({
+            orderId: kioskState.lastOrderId,
+            status: kioskState.orderStatus,
+            kitchenStatus: kioskState.kitchenStatus
+        }));
+    }
+}
+function clearActiveOrder() {
+    localStorage.removeItem('heha_active_order');
+}
 
 // Cache for Kiosk Data
 let kioskCache = {
@@ -38,6 +56,9 @@ export async function renderKiosk(container, forceRefresh = false) {
     lastRenderedScreen = kioskState.screen;
     container.innerHTML = '';
     container.className = 'w-full h-screen bg-[#f4f4f4] overflow-hidden font-sans relative';
+
+    // Central Re-render Helper
+    window.renderKioskInstance = () => renderKiosk(container, true);
 
     switch (kioskState.screen) {
         case 'menu':
@@ -73,6 +94,7 @@ export async function renderKiosk(container, forceRefresh = false) {
 
     setupKioskChatRealtime(container);
     setupOrderStatusRealtime(container);
+    setupKioskProductsRealtime(container);
 }
 
 /**
@@ -128,7 +150,7 @@ async function renderMenuScreen(container) {
                       onerror="this.src='https://placehold.co/150x150?text=HEHA'">
             </div>
             
-            <nav class="flex flex-col gap-4 md:gap-6 w-full px-2">
+            <nav class="flex-1 flex flex-col gap-4 md:gap-6 w-full px-2">
                 ${allCategories.map(cat => `
                     <button onclick="kioskSetCategory('${cat}')" 
                            class="flex flex-col items-center p-3 rounded-[1.5rem] transition-all duration-300 group
@@ -139,6 +161,24 @@ async function renderMenuScreen(container) {
                         <span class="text-[9px] md:text-xs font-black uppercase tracking-tighter text-center leading-none">${cat}</span>
                     </button>
                 `).join('')}
+                
+                <!-- Sidebar Bottom Actions -->
+                <div class="mt-auto pt-4 pb-2 w-full flex flex-col gap-2 items-center">
+                    ${cartQty > 0 ? `
+                        <button onclick="setKioskScreen('cart')" class="w-full bg-primary text-white p-2.5 rounded-2xl shadow-lg shadow-primary/20 flex flex-col items-center gap-0.5 transition active:scale-95 relative">
+                            <div class="absolute -top-1.5 -right-0.5 bg-white text-primary w-5 h-5 rounded-full flex items-center justify-center font-extrabold text-[10px] border-2 border-primary shadow-sm">
+                                ${cartQty}
+                            </div>
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 100 4 2 2 0 000-4z"/></svg>
+                            <span class="text-[8px] font-bold leading-none">Bs.${store.cartTotal.toFixed(0)}</span>
+                        </button>
+                    ` : ''}
+                    <button onclick="toggleKioskChat()" class="w-full bg-gray-900 text-white p-2.5 rounded-2xl flex flex-col items-center gap-0.5 transition active:scale-95 relative shadow-sm">
+                        <span class="absolute -top-1 -right-0.5 w-3 h-3 bg-primary rounded-full ${kioskState.messages.length > 0 ? '' : 'hidden'}"></span>
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
+                        <span class="text-[8px] font-bold leading-none">Chat</span>
+                    </button>
+                </div>
             </nav>
         </aside>
 
@@ -189,7 +229,7 @@ async function renderMenuScreen(container) {
                  
                  <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-x-6 md:gap-x-10 gap-y-16 md:gap-y-20">
                      ${filteredProducts.map(p => {
-        const outOfStock = p.track_stock && p.stock <= 0;
+        const outOfStock = (p.track_stock && p.stock <= 0) || p.is_available === false;
         return `
                         <div class="bg-white rounded-[2.5rem] p-6 md:p-8 shadow-[0_20px_40px_rgba(0,0,0,0.03)] hover:shadow-[0_30px_60px_rgba(0,0,0,0.08)] transition-all duration-500 transform hover:-translate-y-2 cursor-pointer relative group border border-gray-50 flex flex-col" onclick="${outOfStock ? '' : `kioskOpenModal(${p.id})`}">
                              
@@ -225,27 +265,9 @@ async function renderMenuScreen(container) {
     }).join('')}
                  </div>
             </div>
-            
-            <!-- Floating Cart Summary -->
-            ${cartQty > 0 ? `
-                <div class="absolute bottom-6 right-6 md:bottom-12 md:right-12 z-30 animate-slide-in-bottom">
-                    <button onclick="setKioskScreen('cart')" class="bg-primary hover:bg-orange-600 text-white py-4 px-6 md:py-6 md:px-12 rounded-[2.5rem] shadow-[0_20px_50px_rgba(255,68,0,0.4)] flex items-center gap-4 md:gap-8 transition-all duration-300 transform hover:scale-105 active:scale-95 ring-[12px] ring-white/30 backdrop-blur-sm">
-                        <div class="flex flex-col items-start leading-none">
-                             <span class="text-[10px] md:text-xs font-black uppercase tracking-[0.2em] opacity-80 mb-1">Tu Pedido</span>
-                             <span class="text-2xl md:text-4xl font-black">Bs. ${store.cartTotal.toFixed(2)}</span>
-                        </div>
-                        <div class="bg-white text-primary w-12 h-12 md:w-16 md:h-16 rounded-full flex items-center justify-center font-black text-xl md:text-3xl shadow-inner">
-                            ${cartQty}
-                        </div>
-                    </button>
-                </div>
-            ` : ''}
         </main>
     </div>
     `;
-
-    // Global Helpers for this screen (ensure they use container)
-    window.renderKioskInstance = () => renderKiosk(container, true);
 }
 
 /**
@@ -266,63 +288,95 @@ function getCatIcon(c) {
 /**
  * Chat Component HTML
  */
+/**
+ * Chat Component HTML
+ */
 function renderKioskChat() {
-    // Determine target ID (General or Specific Order)
+    if (!kioskState.isChatOpen) return '';
     const targetOrderId = kioskState.lastOrderId;
     const isGeneral = !targetOrderId;
 
     return `
-        <div class="fixed bottom-6 right-6 z-[100] flex flex-col items-end gap-4 pointer-events-auto">
-            ${kioskState.isChatOpen ? `
-                <div class="w-[320px] md:w-[400px] h-[450px] bg-white rounded-[2.5rem] shadow-2xl border border-gray-100 flex flex-col overflow-hidden animate-bounce-in-up">
-                    <div class="p-6 bg-black text-white flex justify-between items-center">
-                        <div class="flex items-center gap-3">
-                            <div class="w-10 h-10 bg-primary rounded-full flex items-center justify-center text-xl">👨‍🍳</div>
-                            <div>
-                                <p class="text-xs font-black uppercase tracking-widest text-primary">
-                                    ${isGeneral ? 'Consultas HEHA' : `Ayuda Pedido #${String(targetOrderId).slice(-3)}`}
-                                </p>
-                                <p class="text-[10px] text-gray-400 font-bold">Respuesta en tiempo real</p>
-                            </div>
+        <div class="fixed inset-0 z-[100] flex items-end sm:items-center justify-center bg-black/40 pointer-events-auto animate-fade-in" onclick="if(event.target === this) toggleKioskChat()" style="font-family: 'Outfit', sans-serif;">
+            <div class="w-full sm:max-w-md sm:rounded-3xl rounded-t-3xl bg-white shadow-2xl flex flex-col overflow-hidden animate-slide-in-bottom" style="height: 70vh; max-height: 550px;">
+                <div class="px-5 py-4 bg-gray-900 text-white flex justify-between items-center flex-shrink-0">
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 bg-primary/20 rounded-xl flex items-center justify-center text-xl">💬</div>
+                        <div>
+                            <p class="text-sm font-black text-white leading-none mb-1">
+                                ${isGeneral ? 'Soporte HEHA' : `Pedido #${String(targetOrderId).slice(-3)}`}
+                            </p>
+                            <p class="text-[10px] text-primary font-bold uppercase tracking-widest">Respuesta en tiempo real</p>
                         </div>
-                        <button onclick="toggleKioskChat()" class="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center hover:bg-white/20 transition">✕</button>
                     </div>
-                    
-                    <div id="chat-messages" class="flex-1 overflow-y-auto p-6 space-y-4 bg-gray-50/50 scrollbar-hide">
-                        ${kioskState.messages.length === 0 ? `
-                            <div class="h-full flex flex-col items-center justify-center text-center text-gray-300 px-8">
-                                <span class="text-4xl mb-4">💬</span>
-                                <p class="text-sm font-bold text-gray-400">${isGeneral ? '¡Hola! Escríbenos si tienes alguna duda antes de pedir.' : '¡Hola! Escríbenos aquí si tienes dudas sobre tu reserva.'}</p>
-                            </div>
-                        ` : kioskState.messages.map(m => {
-        const isMe = m.sender_name === (store.user?.full_name || store.customerName || 'Cliente');
-        return `
-                                <div class="flex ${isMe ? 'justify-end' : 'justify-start'}">
-                                    <div class="max-w-[80%] p-4 rounded-2xl text-sm font-medium ${isMe ? 'bg-black text-white rounded-br-none' : 'bg-white text-gray-800 border border-gray-100 rounded-bl-none shadow-sm'}">
-                                        <p class="${isMe ? 'text-primary' : 'text-gray-400'} text-[9px] font-black uppercase tracking-widest mb-1">${m.sender_name}</p>
-                                        <p>${m.message}</p>
-                                    </div>
-                                </div>
-                            `;
-    }).join('')}
-                    </div>
-
-                    <form onsubmit="sendKioskMessage(event)" class="p-4 bg-white border-t border-gray-100 flex gap-2">
-                        <input id="chat-input" type="text" placeholder="Escribe un mensaje..." required
-                               class="flex-1 p-4 rounded-2xl bg-gray-50 border-none focus:ring-2 focus:ring-primary/20 outline-none text-sm font-bold">
-                        <button type="submit" class="w-12 h-12 bg-black text-white rounded-2xl flex items-center justify-center transition active:scale-95 shadow-lg shadow-black/10">
-                            🚀
-                        </button>
-                    </form>
+                    <button onclick="toggleKioskChat()" class="w-9 h-9 rounded-xl bg-white/10 flex items-center justify-center hover:bg-white/20 transition text-sm">✕</button>
                 </div>
-            ` : `
-                <button onclick="toggleKioskChat()" class="w-16 h-16 bg-black text-white rounded-full shadow-2xl flex items-center justify-center text-3xl transition transform hover:scale-110 active:scale-95 group relative shadow-[0_10px_30px_rgba(0,0,0,0.2)]">
-                    <span class="absolute -top-1 -right-1 w-5 h-5 bg-primary border-4 border-white rounded-full animate-pulse ${kioskState.messages.length > 0 ? '' : 'hidden'}"></span>
-                    💬
-                </button>
-            `}
+                
+                <div id="chat-messages" class="flex-1 overflow-y-auto p-5 space-y-4 bg-gray-50/50 scrollbar-hide">
+                    ${renderKioskChatMessages()}
+                </div>
+
+                <form onsubmit="sendKioskMessage(event)" class="p-4 bg-white border-t border-gray-100 flex gap-3 flex-shrink-0">
+                    <input id="chat-input" type="text" placeholder="Escribe un mensaje..." required
+                           class="flex-1 px-4 py-3.5 rounded-2xl bg-gray-50 border-none focus:ring-2 focus:ring-primary/20 outline-none text-sm font-semibold">
+                    <button type="submit" class="w-12 h-12 bg-primary text-white rounded-2xl flex items-center justify-center transition active:scale-90 shadow-lg shadow-primary/20">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/></svg>
+                    </button>
+                </form>
+            </div>
         </div>
     `;
+}
+
+function renderKioskChatMessages() {
+    if (kioskState.messages.length === 0) {
+        return `
+            <div class="h-full flex flex-col items-center justify-center text-center text-gray-300 px-6 py-10">
+                <div class="w-20 h-20 bg-gray-100/50 rounded-full flex items-center justify-center mb-4">
+                    <span class="text-4xl opacity-50">💬</span>
+                </div>
+                <p class="text-sm font-black uppercase tracking-widest text-gray-400">Sin mensajes</p>
+                <p class="text-xs text-gray-300 mt-1">Envía un hola para comenzar</p>
+            </div>
+        `;
+    }
+
+    return kioskState.messages.map(m => {
+        const myFullName = store.user?.full_name || store.customerName || 'Cliente';
+        const isMe = m.sender_name === myFullName;
+        const firstName = m.sender_name.split(' ')[0];
+        
+        // Avatar logic: Try to get from store if it's me, or use a generic one
+        let avatarUrl = 'https://ui-avatars.com/api/?name=' + firstName + '&background=random&color=fff';
+        if (isMe && store.user?.user_metadata?.avatar_url) avatarUrl = store.user.user_metadata.avatar_url;
+        if (isMe && store.user?.user_metadata?.picture) avatarUrl = store.user.user_metadata.picture;
+
+        return `
+            <div class="flex items-end gap-2 ${isMe ? 'flex-row-reverse' : 'flex-row'} mb-2">
+                <div class="flex-shrink-0 w-8 h-8 rounded-lg overflow-hidden border-2 border-white shadow-sm">
+                    <img src="${avatarUrl}" class="w-full h-full object-cover">
+                </div>
+                <div class="max-w-[75%] flex flex-col ${isMe ? 'items-end' : 'items-start'}">
+                    <span class="text-[9px] font-black uppercase tracking-tighter text-gray-400 mb-1 px-1">${firstName}</span>
+                    <div class="px-4 py-3 rounded-2xl shadow-sm text-sm ${isMe ? 'bg-gray-900 text-white rounded-br-none' : 'bg-white text-gray-800 border border-gray-100 rounded-bl-none'}">
+                        <p class="font-medium leading-relaxed">${m.message}</p>
+                    </div>
+                    <span class="text-[7px] font-bold text-gray-300 uppercase mt-1 px-1">${new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+function updateKioskChatUI() {
+    const list = document.getElementById('chat-messages');
+    if (list) {
+        list.innerHTML = renderKioskChatMessages();
+        list.scrollTop = list.scrollHeight;
+    } else {
+        // If chat is open but container not found (hidden by wrapper logic), full refresh as fallback
+        if (kioskState.isChatOpen) window.renderKioskInstance();
+    }
 }
 
 /**
@@ -352,11 +406,7 @@ function setupKioskChatRealtime(container) {
             if (payload.new.sender_name !== (store.user?.full_name || store.customerName || 'Cliente')) {
                  if (window.playNotificationSound) window.playNotificationSound();
             }
-            window.renderKioskInstance();
-            setTimeout(() => {
-                const msgs = document.getElementById('chat-messages');
-                if (msgs) msgs.scrollTop = msgs.scrollHeight;
-            }, 100);
+            updateKioskChatUI();
         })
         .subscribe();
     
@@ -369,7 +419,7 @@ function setupKioskChatRealtime(container) {
          const { data } = await query;
          if (data) {
              kioskState.messages = data;
-             window.renderKioskInstance();
+             updateKioskChatUI();
          }
     };
     fetchMessages();
@@ -390,8 +440,18 @@ function setupOrderStatusRealtime(container) {
             filter: `id=eq.${kioskState.lastOrderId}`
         }, (payload) => {
             const newStatus = payload.new.status;
-            if (newStatus !== kioskState.orderStatus) {
+            const newKitchenStatus = payload.new.kitchen_status;
+            let changed = false;
+            if (newStatus && newStatus !== kioskState.orderStatus) {
                 kioskState.orderStatus = newStatus;
+                changed = true;
+            }
+            if (newKitchenStatus && newKitchenStatus !== kioskState.kitchenStatus) {
+                kioskState.kitchenStatus = newKitchenStatus;
+                changed = true;
+            }
+            if (changed) {
+                saveActiveOrder();
                 window.renderKioskInstance();
             }
         })
@@ -406,52 +466,51 @@ function renderProductModal(container) {
     if (!p) return;
 
     const modalHTML = `
-      <div id="kiosk-modal-overlay" class="absolute inset-0 z-50 flex items-center justify-center p-4 md:p-6 animate-fade-in bg-black/80 backdrop-blur-md" onclick="if(event.target === this) kioskCloseModal()" style="font-family: 'Outfit', sans-serif;">
-         <div class="bg-[#f8f8f8] w-full max-w-2xl rounded-[3rem] shadow-[0_50px_100px_rgba(0,0,0,0.5)] overflow-hidden flex flex-col max-h-[95vh] md:max-h-[90vh] animate-slide-in-bottom border border-white/10">
-            <div class="h-64 md:h-96 relative flex items-center justify-center p-8 md:p-12 bg-white/20">
-               <img src="${p.image_url}" class="max-h-full max-w-full object-contain filter drop-shadow-[0_20px_40px_rgba(0,0,0,0.2)] transform scale-110" onerror="this.src='https://placehold.co/400x400?text=Comida'">
-               <button onclick="kioskCloseModal()" class="absolute top-6 right-6 bg-white/90 backdrop-blur-sm p-4 rounded-full shadow-xl hover:scale-110 active:scale-95 transition text-gray-900 font-black z-10 flex items-center justify-center w-12 h-12 md:w-16 md:h-16 border border-white">
-                  ✕
+      <div id="kiosk-modal-overlay" class="absolute inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 animate-fade-in" onclick="if(event.target === this) kioskCloseModal()" style="font-family: 'Outfit', sans-serif;">
+         <div class="bg-white w-full sm:max-w-md sm:rounded-3xl rounded-t-3xl shadow-2xl overflow-hidden flex flex-col animate-slide-in-bottom sm:animate-scale-up relative" style="max-height: 92vh;">
+            
+            <!-- Image Section -->
+            <div class="relative bg-gradient-to-br from-gray-100 to-gray-50 flex items-center justify-center" style="height: 200px;">
+               <img src="${p.image_url}" class="max-h-[170px] max-w-[80%] object-contain drop-shadow-xl" onerror="this.src='https://placehold.co/400x400?text=HEHA'">
+               <button onclick="kioskCloseModal()" class="absolute top-3 right-3 w-9 h-9 bg-white rounded-full shadow-md flex items-center justify-center hover:scale-110 active:scale-90 transition-transform border border-gray-200">
+                  <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12"/></svg>
                </button>
+               ${p.track_stock ? `
+                  <div class="absolute top-3 left-3 ${p.stock > 0 ? 'bg-green-500' : 'bg-red-500'} text-white text-[10px] font-bold px-3 py-1 rounded-full uppercase tracking-wider shadow-sm">
+                     ${p.stock > 0 ? `${p.stock} disponibles` : 'Agotado'}
+                  </div>
+               ` : ''}
             </div>
             
-            <div class="p-8 md:p-12 flex-1 flex flex-col bg-white rounded-t-[3.5rem] -mt-12 shadow-[0_-20px_50px_rgba(0,0,0,0.08)] relative z-0 overflow-y-auto custom-scrollbar">
-               <div class="flex flex-col md:flex-row justify-between items-start mb-6 md:mb-8 gap-4">
-                  <div class="flex-1">
-                      <h2 class="text-3xl md:text-5xl font-black text-gray-900 leading-none uppercase tracking-tight mb-3">${p.name}</h2>
-                      ${p.track_stock ? `
-                          <div class="flex items-center gap-2">
-                            <span class="w-2 h-2 rounded-full ${p.stock > 0 ? 'bg-green-500 animate-pulse' : 'bg-red-500'}"></span>
-                            <span class="text-[10px] md:text-xs font-black text-gray-400 border-gray-100 uppercase tracking-widest">
-                                ${p.stock > 0 ? `${p.stock} EN TIENDA` : 'SIN EXISTENCIA'}
-                            </span>
-                          </div>
-                      ` : ''}
-                  </div>
-                  <div class="bg-primary/5 px-6 py-3 rounded-2xl border border-primary/10">
-                      <span class="text-3xl md:text-5xl font-black text-primary tracking-tighter">
-                        <span class="text-base md:text-2xl text-primary/60 font-black mr-1 uppercase">Bs.</span>${p.price}
-                      </span>
-                  </div>
+            <!-- Info Section -->
+            <div class="px-5 pt-5 pb-2">
+               <h2 class="text-xl font-extrabold text-gray-900 leading-snug mb-1">${p.name}</h2>
+               <p class="text-sm text-gray-400 leading-relaxed mb-4 line-clamp-2">${p.description || 'Preparado al momento con ingredientes frescos y el sello HEHA.'}</p>
+               <div class="flex items-baseline gap-1 mb-5">
+                  <span class="text-sm font-bold text-gray-400">Bs.</span>
+                  <span class="text-3xl font-extrabold text-gray-900 tracking-tight">${p.price}</span>
                </div>
-               
-               <p class="text-gray-500 text-base md:text-xl font-medium mb-8 md:mb-12 leading-relaxed opacity-80">${p.description || 'Deliciosa opción preparada al momento con los mejores ingredientes y el toque auténtico de HEHA.'}</p>
-               
-               <div class="bg-gray-50 rounded-[2.5rem] p-6 md:p-8 mt-auto border border-gray-100">
-                    <div class="flex flex-col sm:flex-row items-center justify-between gap-6 md:gap-10">
-                        <div class="flex items-center bg-white rounded-3xl shadow-inner p-2 md:p-3 border border-gray-100 w-full sm:w-auto justify-center gap-4">
-                             <button onclick="updateModalQty(-1)" class="w-14 h-14 md:w-20 md:h-20 bg-gray-50 text-gray-300 hover:text-red-500 rounded-2xl text-4xl font-black transition active:scale-90 flex items-center justify-center">-</button>
-                             <span id="modal-qty" class="text-4xl md:text-5xl font-[1000] w-14 md:w-20 text-center text-gray-900 tracking-tighter">1</span>
-                             <button onclick="updateModalQty(1)" class="w-14 h-14 md:w-20 md:h-20 bg-gray-50 text-gray-300 hover:text-green-500 rounded-2xl text-4xl font-black transition active:scale-90 flex items-center justify-center">+</button>
-                        </div>
-                        
-                        <button onclick="kioskConfirmAdd(${p.id})" 
-                                ${p.track_stock && p.stock <= 0 ? 'disabled' : ''}
-                                class="w-full sm:flex-1 h-16 md:h-24 ${p.track_stock && p.stock <= 0 ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-primary text-white hover:bg-orange-600 shadow-[0_15px_30px_rgba(255,68,0,0.35)] active:scale-95'} font-black text-xl md:text-3xl rounded-[1.8rem] md:rounded-[2.2rem] transition-all flex items-center justify-center gap-4 group">
-                            <span>${p.track_stock && p.stock <= 0 ? 'AGOTADO' : 'AGREGAR'}</span>
-                            <span class="w-8 h-8 md:w-10 md:h-10 bg-white/20 rounded-xl flex items-center justify-center text-sm md:text-lg group-hover:translate-x-1 transition-transform">➔</span>
-                        </button>
-                    </div>
+            </div>
+
+            <!-- Actions Section -->
+            <div class="px-5 pb-5 pt-0">
+               <div class="flex items-center gap-3">
+                  <!-- Qty Selector -->
+                  <div class="flex items-center bg-gray-100 rounded-2xl h-14 flex-shrink-0">
+                     <button onclick="updateModalQty(-1)" class="w-14 h-14 flex items-center justify-center text-xl font-bold text-gray-400 hover:text-gray-900 active:scale-90 transition-all rounded-2xl hover:bg-gray-200">−</button>
+                     <span id="modal-qty" class="w-8 text-center text-xl font-extrabold text-gray-900">1</span>
+                     <button onclick="updateModalQty(1)" class="w-14 h-14 flex items-center justify-center text-xl font-bold text-gray-400 hover:text-gray-900 active:scale-90 transition-all rounded-2xl hover:bg-gray-200">+</button>
+                  </div>
+                  
+                  <!-- Add Button -->
+                  <button onclick="kioskConfirmAdd(${p.id})" 
+                          data-price="${p.price}"
+                          ${p.track_stock && p.stock <= 0 ? 'disabled' : ''}
+                          class="flex-1 h-14 ${p.track_stock && p.stock <= 0 ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-primary text-white active:scale-[0.98] hover:brightness-110 shadow-lg shadow-primary/25'} font-bold text-base rounded-2xl transition-all flex items-center justify-center gap-2">
+                      <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 4v16m8-8H4"/></svg>
+                      <span>${p.track_stock && p.stock <= 0 ? 'Agotado' : 'Agregar'}</span>
+                      <span class="font-extrabold">Bs.${p.price}</span>
+                  </button>
                </div>
             </div>
          </div>
@@ -467,8 +526,17 @@ function renderProductModal(container) {
         let v = parseInt(el.innerText) + delta;
         if (v < 1) v = 1;
         el.innerText = v;
+        
+        // Update button price dynamically
+        const addBtn = document.querySelector('button[onclick*="kioskConfirmAdd"]');
+        if (addBtn) {
+            const priceSpan = addBtn.querySelector('span:last-child');
+            const unitPrice = parseFloat(addBtn.dataset.price || 0);
+            if (priceSpan && unitPrice) priceSpan.textContent = 'Bs.' + (v * unitPrice).toFixed(0);
+        }
     };
 }
+
 
 /**
  * Toast Helper
@@ -495,131 +563,128 @@ function showKioskToast(msg) {
  */
 function renderCartScreen(container) {
     const total = store.cartTotal;
+    const itemCount = store.cart.reduce((s, i) => s + i.quantity, 0);
 
     container.innerHTML = `
-      <div class="h-full flex flex-col bg-[#f8f8f8] font-sans" style="font-family: 'Outfit', sans-serif;">
-         <header class="bg-white/70 backdrop-blur-md p-6 md:p-10 flex items-center gap-6 md:gap-10 sticky top-0 z-20 border-b border-gray-100">
-             <button onclick="setKioskScreen('menu')" class="p-5 md:p-6 rounded-[2rem] bg-gray-100 hover:bg-gray-200 transition transform hover:scale-105 active:scale-95 shadow-sm">
-                 <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 md:h-10 md:w-10 text-gray-900" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
+      <div class="h-full flex flex-col bg-white" style="font-family: 'Outfit', sans-serif;">
+         <!-- Header -->
+         <header class="flex items-center gap-4 px-4 py-3 border-b border-gray-100 bg-white sticky top-0 z-20">
+             <button onclick="setKioskScreen('menu')" class="w-10 h-10 rounded-xl bg-gray-100 hover:bg-gray-200 transition flex items-center justify-center active:scale-95">
+                 <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-gray-700" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M10 19l-7-7m0 0l7-7m-7 7h18"/></svg>
              </button>
-             <div>
-                <h1 class="text-3xl md:text-6xl font-[1000] text-gray-900 uppercase tracking-tighter leading-none">Tu Pedido</h1>
-                <p class="text-gray-400 font-bold text-xs md:text-lg uppercase tracking-[0.3em] mt-1 opacity-70">Casi listo para disfrutar</p>
+             <div class="flex-1">
+                <h1 class="text-lg font-extrabold text-gray-900">Tu Pedido</h1>
+                <p class="text-xs text-gray-400">${itemCount} ${itemCount === 1 ? 'producto' : 'productos'}</p>
              </div>
          </header>
          
-         <main class="flex-1 overflow-y-auto p-6 md:p-12 animate-fade-in custom-scrollbar">
-            <div class="max-w-6xl mx-auto flex flex-col lg:flex-row gap-10 md:gap-16">
-                <!-- Items List -->
-                <div class="flex-1 space-y-6">
-                    ${store.cart.length === 0 ? `
-                        <div class="bg-white rounded-[3rem] p-16 md:p-24 text-center shadow-sm border border-gray-50 flex flex-col items-center">
-                            <span class="text-8xl md:text-9xl block mb-6 animate-bounce">🛒</span>
-                            <h3 class="text-2xl md:text-4xl font-black text-gray-300 uppercase tracking-widest">Tu carrito está vacío</h3>
-                            <button onclick="setKioskScreen('menu')" class="mt-8 bg-primary text-white font-black px-10 py-5 rounded-3xl shadow-xl hover:scale-105 transition active:scale-95 uppercase tracking-widest text-sm">Empezar Pedido</button>
+         <!-- Scrollable Content -->
+         <main class="flex-1 overflow-y-auto">
+            
+            <!-- Cart Items -->
+            <div class="px-4 py-4 space-y-3">
+                ${store.cart.length === 0 ? `
+                    <div class="text-center py-16">
+                        <span class="text-6xl block mb-4">🛒</span>
+                        <p class="text-gray-300 font-bold text-lg mb-6">Tu carrito está vacío</p>
+                        <button onclick="setKioskScreen('menu')" class="bg-primary text-white font-bold px-8 py-3 rounded-xl shadow-lg active:scale-95 transition">Ver Menú</button>
+                    </div>
+                ` : store.cart.map(item => `
+                    <div class="flex items-center gap-3 bg-gray-50 rounded-2xl p-3">
+                        <div class="w-16 h-16 rounded-xl bg-white overflow-hidden flex-shrink-0 border border-gray-100 p-1">
+                            <img src="${item.product.image_url}" class="w-full h-full object-contain" onerror="this.src='https://placehold.co/100'">
                         </div>
-                    ` : store.cart.map(item => `
-                        <div class="flex items-center bg-white p-4 md:p-6 rounded-[2.5rem] shadow-[0_15px_35px_rgba(0,0,0,0.02)] border border-gray-50 hover:border-primary/20 transition-all duration-300 pr-6">
-                            <div class="h-24 w-24 md:h-40 md:w-40 rounded-3xl bg-gray-50 overflow-hidden flex-shrink-0 mr-6 md:mr-10 relative shadow-inner p-2 border border-gray-100">
-                                <img src="${item.product.image_url}" class="h-full w-full object-contain filter drop-shadow-lg" onerror="this.src='https://placehold.co/150'">
-                            </div>
-                            
-                            <div class="flex-1 min-w-0 mr-4">
-                                <h3 class="text-xl md:text-3xl font-[1000] text-gray-900 leading-tight mb-2 truncate uppercase tracking-tight">${item.product.name}</h3>
-                                <div class="bg-orange-50 inline-block px-4 py-1.5 rounded-xl border border-orange-100">
-                                    <p class="text-lg md:text-2xl font-black text-orange-500 tracking-tighter">Bs. ${(item.product.price * item.quantity).toFixed(2)}</p>
-                                </div>
-                            </div>
-                            
-                            <div class="flex items-center gap-3 bg-gray-100 rounded-[1.5rem] p-2 md:p-3 shadow-inner">
-                                <button onclick="kioskUpdateQty(${item.product.id}, -1)" class="w-10 h-10 md:w-14 md:h-14 bg-white rounded-2xl shadow-sm text-gray-400 hover:text-red-500 text-2xl md:text-3xl font-black transition active:scale-90 flex items-center justify-center">-</button>
-                                <span class="text-xl md:text-3xl font-[1000] w-8 md:w-12 text-center text-gray-900">${item.quantity}</span>
-                                <button onclick="kioskUpdateQty(${item.product.id}, 1)" class="w-10 h-10 md:w-14 md:h-14 bg-gray-900 text-white rounded-2xl shadow-xl hover:bg-black text-2xl md:text-3xl font-black transition active:scale-90 flex items-center justify-center">+</button>
-                            </div>
+                        <div class="flex-1 min-w-0">
+                            <h3 class="text-sm font-bold text-gray-900 leading-tight mb-0.5">${item.product.name}</h3>
+                            <p class="text-sm font-extrabold text-primary">Bs. ${(item.product.price * item.quantity).toFixed(2)}</p>
                         </div>
-                    `).join('')}
+                        <div class="flex items-center gap-0 bg-white rounded-xl border border-gray-200 flex-shrink-0">
+                            <button onclick="kioskUpdateQty('${item.product.id}', -1)" class="w-9 h-9 flex items-center justify-center text-gray-400 hover:text-red-500 text-lg font-bold transition active:scale-90">−</button>
+                            <span class="w-7 text-center text-sm font-extrabold text-gray-900">${item.quantity}</span>
+                            <button onclick="kioskUpdateQty('${item.product.id}', 1)" class="w-9 h-9 flex items-center justify-center text-gray-400 hover:text-gray-900 text-lg font-bold transition active:scale-90">+</button>
+                        </div>
+                    </div>
+                `).join('')}
+            </div>
+
+            ${store.cart.length > 0 ? `
+            <!-- Divider -->
+            <div class="h-2 bg-gray-50"></div>
+
+            <!-- Delivery Options -->
+            <div class="px-4 py-4">
+                <p class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Tipo de pedido</p>
+                <div class="grid grid-cols-2 gap-2 mb-4">
+                    <button onclick="setDiningOption('eat-in')" class="py-3 rounded-xl border-2 text-sm font-bold transition-all flex items-center justify-center gap-2 ${kioskState.diningOption === 'eat-in' ? 'border-primary bg-primary/5 text-primary' : 'border-gray-100 bg-gray-50 text-gray-400'}">
+                        🍽️ En Mesa
+                    </button>
+                    <button onclick="setDiningOption('takeout')" class="py-3 rounded-xl border-2 text-sm font-bold transition-all flex items-center justify-center gap-2 ${kioskState.diningOption === 'takeout' ? 'border-primary bg-primary/5 text-primary' : 'border-gray-100 bg-gray-50 text-gray-400'}">
+                        🛍️ Para Llevar
+                    </button>
                 </div>
-                
-                <!-- Summary Card -->
-                <div class="lg:w-[450px] flex-shrink-0">
-                    <div class="bg-white rounded-[3.5rem] shadow-[0_40px_80px_rgba(0,0,0,0.05)] p-8 md:p-12 sticky top-36 border border-gray-100 relative overflow-hidden">
-                         <div class="absolute -top-10 -right-10 w-40 h-40 bg-primary/5 rounded-full blur-3xl opacity-50"></div>
-                         
-                         <h3 class="text-2xl md:text-3xl font-[1000] text-gray-900 mb-8 md:mb-12 uppercase text-center tracking-tighter border-b border-gray-100 pb-6 relative z-10">Opciones de Entrega</h3>
-                         
-                         <div class="grid grid-cols-2 gap-4 md:gap-6 mb-10 md:mb-14 relative z-10">
-                            <button onclick="setDiningOption('eat-in')" class="p-6 md:p-10 rounded-[2.5rem] border-2 transition-all duration-300 flex flex-col items-center gap-4 ${kioskState.diningOption === 'eat-in' ? 'border-primary bg-primary/5 text-primary shadow-xl scale-105' : 'border-gray-50 bg-gray-50 text-gray-300 hover:bg-gray-100'}">
-                                 <span class="text-5xl md:text-7xl drop-shadow-xl animate-float">🍽️</span>
-                                 <span class="font-black text-xs md:text-base uppercase tracking-[0.2em] mt-2 text-center leading-none">En Mesa</span>
-                            </button>
-                            <button onclick="setDiningOption('takeout')" class="p-6 md:p-10 rounded-[2.5rem] border-2 transition-all duration-300 flex flex-col items-center gap-4 ${kioskState.diningOption === 'takeout' ? 'border-primary bg-primary/5 text-primary shadow-xl scale-105' : 'border-gray-50 bg-gray-50 text-gray-300 hover:bg-gray-100'}">
-                                 <span class="text-5xl md:text-7xl drop-shadow-xl animate-float">🛍️</span>
-                                 <span class="font-black text-xs md:text-base uppercase tracking-[0.2em] mt-2 text-center leading-none">Para Llevar</span>
-                            </button>
-                         </div>
-                         
-                         <div class="space-y-4 mb-10 md:mb-14 relative z-10 transition-all">
-                            <div class="flex items-center justify-between p-4 md:p-6 bg-gray-50 rounded-[2.5rem] border border-gray-100 shadow-inner">
-                                <div class="flex items-center gap-4">
-                                    <div class="w-10 h-10 md:w-14 md:h-14 bg-white rounded-2xl flex items-center justify-center text-xl md:text-2xl shadow-sm border border-gray-100">🕒</div>
-                                    <div>
-                                        <p class="text-[10px] font-black text-gray-400 uppercase tracking-widest leading-none mb-1">PROGRAMAR PEDIDO</p>
-                                        <p class="text-sm md:text-lg font-black text-gray-800 uppercase tracking-tighter">¿Reservar para más tarde?</p>
-                                    </div>
-                                </div>
-                                <button onclick="toggleKioskReservation()" class="relative inline-flex h-8 w-14 md:h-10 md:w-20 items-center rounded-full transition-all focus:outline-none ${kioskState.isReservation ? 'bg-primary ring-4 ring-primary/20 scale-105' : 'bg-gray-200'}">
-                                    <span class="inline-block h-6 w-6 md:h-8 md:w-8 transform rounded-full bg-white shadow-md transition-transform ${kioskState.isReservation ? 'translate-x-[24px] md:translate-x-[40px]' : 'translate-x-[4px]'}"></span>
-                                </button>
-                            </div>
 
-                            ${kioskState.isReservation ? `
-                                <div class="animate-slide-in-bottom p-5 md:p-8 bg-black text-white rounded-[2.5rem] shadow-2xl relative overflow-hidden group">
-                                    <div class="absolute inset-0 bg-gradient-to-br from-primary/20 to-transparent opacity-50"></div>
-                                    <div class="relative z-10 flex flex-col md:flex-row items-center justify-between gap-6">
-                                        <div class="text-center md:text-left">
-                                            <p class="text-[10px] font-black text-primary uppercase tracking-[0.3em] mb-2 leading-none">Hora de Entrega</p>
-                                            <p class="text-xs text-gray-400 font-bold max-w-[200px] leading-tight">Preparamos tu orden para la hora que elijas.</p>
-                                        </div>
-                                        <input type="time" id="reservation-time" 
-                                               value="${kioskState.reservationTime || ''}"
-                                               onchange="updateKioskReservationTime(this.value)"
-                                               class="w-full md:w-48 p-4 md:p-6 rounded-[1.8rem] bg-white/10 text-white border border-white/10 font-black text-2xl md:text-4xl text-center focus:ring-4 focus:ring-primary/40 outline-none transition-all cursor-pointer hover:bg-white/20">
-                                    </div>
-                                </div>
-                            ` : ''}
-                         </div>
+                <!-- Schedule Toggle -->
+                <div class="flex items-center justify-between bg-gray-50 rounded-xl p-3 border border-gray-100">
+                    <div class="flex items-center gap-3">
+                        <span class="text-lg">🕒</span>
+                        <div>
+                            <p class="text-xs font-bold text-gray-800">¿Reservar para después?</p>
+                        </div>
+                    </div>
+                    <button onclick="toggleKioskReservation()" class="relative inline-flex h-7 w-12 items-center rounded-full transition-all ${kioskState.isReservation ? 'bg-primary' : 'bg-gray-200'}">
+                        <span class="inline-block h-5 w-5 rounded-full bg-white shadow transition-transform ${kioskState.isReservation ? 'translate-x-[22px]' : 'translate-x-[3px]'}"></span>
+                    </button>
+                </div>
+                ${kioskState.isReservation ? `
+                    <div class="mt-2 bg-gray-900 rounded-xl p-4 flex items-center justify-between gap-4 animate-slide-in-bottom">
+                        <div>
+                            <p class="text-[10px] font-bold text-primary uppercase tracking-widest mb-0.5">Hora de entrega</p>
+                            <p class="text-[10px] text-gray-400">Preparamos tu orden a tiempo</p>
+                        </div>
+                        <input type="time" id="reservation-time" 
+                               value="${kioskState.reservationTime || ''}"
+                               onchange="updateKioskReservationTime(this.value)"
+                               class="p-2 rounded-lg bg-white/10 text-white border border-white/10 font-bold text-lg text-center focus:ring-2 focus:ring-primary outline-none w-28">
+                    </div>
+                ` : ''}
+            </div>
 
-                         <div class="space-y-6 mb-10 md:mb-14 relative z-10">
-                             <div class="bg-gray-900 text-white p-6 md:p-8 rounded-[2rem] shadow-2xl flex items-center justify-between group overflow-hidden relative">
-                                 <div class="absolute inset-0 bg-gradient-to-r from-primary/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
-                                 <div class="relative z-10">
-                                    <p class="text-[9px] font-black text-primary uppercase tracking-[0.4em] mb-1">Cliente</p>
-                                    <p class="text-xl md:text-3xl font-[1000] capitalize tracking-tighter leading-none">${(store.user?.full_name || 'Invitado').split(' ')[0]}</p>
-                                 </div>
-                                 <div class="w-14 h-14 md:w-16 md:h-16 bg-white/10 rounded-2xl flex items-center justify-center shadow-inner overflow-hidden relative z-10 backdrop-blur-sm border border-white/5">
-                                    ${store.user?.user_metadata?.avatar_url ? `<img src="${store.user.user_metadata.avatar_url}" class="w-full h-full object-cover">` : '<span class="text-2xl md:text-3xl">👤</span>'}
-                                 </div>
-                             </div>
-                             
-                             <div class="flex justify-between items-baseline px-4 text-gray-400 font-black text-lg md:text-2xl uppercase tracking-tighter">
-                                <span>Subtotal</span>
-                                <span>Bs. ${total.toFixed(2)}</span>
-                             </div>
-                             <div class="flex justify-between items-baseline px-4 text-4xl md:text-6xl font-[1000] text-gray-900 py-6 border-t border-gray-100 leading-none tracking-tighter">
-                                <span>Total</span>
-                                <span class="text-primary">Bs. ${total.toFixed(2)}</span>
-                             </div>
-                         </div>
-                         
-                         <button onclick="kioskCheckout()" class="w-full bg-primary hover:bg-orange-600 text-white font-[1000] text-2xl md:text-4xl py-6 md:py-8 rounded-[2.2rem] md:rounded-[2.8rem] shadow-[0_20px_50px_rgba(255,68,0,0.35)] transform transition-all duration-300 hover:scale-[1.03] active:scale-95 flex items-center justify-center gap-4 group relative overflow-hidden">
-                            <div class="absolute inset-0 bg-white/10 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000"></div>
-                            <span class="relative z-10">RESERVAR</span>
-                            <div class="w-10 h-10 md:w-14 md:h-14 bg-white/20 rounded-full flex items-center justify-center text-lg md:text-2xl relative z-10">➔</div>
-                         </button>
+            <!-- Divider -->
+            <div class="h-2 bg-gray-50"></div>
+
+            <!-- Customer & Summary -->
+            <div class="px-4 py-4">
+                <div class="flex items-center gap-3 mb-4">
+                    <div class="w-10 h-10 bg-gray-900 rounded-xl flex items-center justify-center overflow-hidden flex-shrink-0">
+                        ${store.user?.user_metadata?.avatar_url ? `<img src="${store.user.user_metadata.avatar_url}" class="w-full h-full object-cover">` : '<span class="text-lg">👤</span>'}
+                    </div>
+                    <div>
+                        <p class="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Cliente</p>
+                        <p class="text-sm font-extrabold text-gray-900 capitalize">${store.user?.full_name || 'Invitado'}</p>
                     </div>
                 </div>
+                
+                <div class="flex justify-between text-sm text-gray-400 font-bold mb-2">
+                    <span>Subtotal</span>
+                    <span>Bs. ${total.toFixed(2)}</span>
+                </div>
+                <div class="flex justify-between text-xl font-extrabold text-gray-900 pt-2 border-t border-gray-100">
+                    <span>Total</span>
+                    <span class="text-primary">Bs. ${total.toFixed(2)}</span>
+                </div>
             </div>
+            ` : ''}
          </main>
+
+         ${store.cart.length > 0 ? `
+         <!-- Sticky Checkout Button -->
+         <div class="px-4 pb-4 pt-2 border-t border-gray-100 bg-white">
+             <button onclick="kioskCheckout()" class="w-full h-14 bg-primary text-white font-bold text-lg rounded-2xl shadow-lg shadow-primary/25 active:scale-[0.98] transition-all flex items-center justify-center gap-2 hover:brightness-110">
+                 <span>Confirmar Pedido</span>
+                 <span class="font-extrabold">· Bs. ${total.toFixed(2)}</span>
+             </button>
+         </div>
+         ` : ''}
       </div>
     `;
 
@@ -643,51 +708,142 @@ function renderCartScreen(container) {
     };
 }
 
-/**
- * Success Screen
- */
+
 function renderSuccessScreen(container) {
-    const isReady = kioskState.orderStatus === 'completed';
+    const status = kioskState.orderStatus || 'pending';
+    const orderNum = String(kioskState.lastOrderId).slice(-3);
+
+    // Determine the display state
+    // pending = waiting for cashier
+    // completed = cashier accepted/paid, food being prepared
+    // ready = kitchen finished, pick up order
+    // rejected = order rejected
+    let displayStatus = status;
+    if (status === 'completed' && kioskState.kitchenStatus === 'ready') {
+        displayStatus = 'ready';
+    } else if (status === 'completed') {
+        displayStatus = 'accepted';
+    }
+
+    // Status configurations
+    const statusConfig = {
+        pending: {
+            bg: 'from-amber-400 to-amber-600',
+            icon: kioskState.isReservation ? '⏳' : '💰',
+            title: kioskState.isReservation ? 'RESERVA ENVIADA' : 'DIRÍGETE A CAJA',
+            subtitle: kioskState.isReservation 
+                ? 'Estamos revisando tu reserva. Espera la confirmación aquí.' 
+                : 'Acércate a caja con tu número de pedido para pagar y confirmar tu orden.',
+            statusText: 'PENDIENTE',
+            statusColor: 'text-amber-600',
+            badgeColor: 'bg-amber-400',
+            pulse: true
+        },
+        accepted: {
+            bg: 'from-green-500 to-green-700',
+            icon: '✅',
+            title: '¡ACEPTADO!',
+            subtitle: 'Tu pedido está siendo preparado en cocina',
+            statusText: 'EN PREPARACIÓN',
+            statusColor: 'text-green-600',
+            badgeColor: 'bg-green-400',
+            pulse: true
+        },
+        ready: {
+            bg: 'from-blue-500 to-blue-700',
+            icon: '🍔',
+            title: '¡PEDIDO LISTO!',
+            subtitle: 'Pasa a recoger tu orden por el mostrador',
+            statusText: 'LISTO PARA RECOGER',
+            statusColor: 'text-blue-600',
+            badgeColor: 'bg-blue-400',
+            pulse: false
+        },
+        rejected: {
+            bg: 'from-red-500 to-red-700',
+            icon: '❌',
+            title: 'PEDIDO RECHAZADO',
+            subtitle: 'Lo sentimos, no podemos procesar tu pedido en este momento',
+            statusText: 'RECHAZADO',
+            statusColor: 'text-red-600',
+            badgeColor: 'bg-red-400',
+            pulse: false
+        }
+    };
+
+    const cfg = statusConfig[displayStatus] || statusConfig.pending;
+    const isFinished = displayStatus === 'ready' || displayStatus === 'rejected';
 
     container.innerHTML = `
-      <div class="h-full w-full flex flex-col items-center justify-center ${isReady ? 'bg-gradient-to-br from-blue-500 to-blue-700' : 'bg-gradient-to-br from-green-500 to-green-700'} text-white p-4 md:p-8 text-center animate-fade-in relative overflow-hidden">
-         <div class="absolute top-0 left-0 w-48 h-48 md:w-64 md:h-64 bg-white/10 rounded-full -translate-x-1/2 -translate-y-1/2"></div>
-         <div class="absolute bottom-0 right-0 w-64 h-64 md:w-96 md:h-96 bg-black/10 rounded-full translate-x-1/3 translate-y-1/3 rotate-45"></div>
+      <div class="h-full w-full flex flex-col bg-gradient-to-br ${cfg.bg} text-white" style="font-family: 'Outfit', sans-serif;">
+         
+         <!-- Background Deco -->
+         <div class="absolute top-0 left-0 w-48 h-48 bg-white/10 rounded-full -translate-x-1/2 -translate-y-1/2"></div>
+         <div class="absolute bottom-0 right-0 w-64 h-64 bg-black/10 rounded-full translate-x-1/3 translate-y-1/3"></div>
 
-         <div class="z-10 animate-bounce-in-up w-full max-w-sm md:max-w-2xl px-2">
-             <div class="bg-white ${isReady ? 'text-blue-600' : 'text-green-600'} rounded-full w-20 h-20 md:w-32 md:h-32 flex items-center justify-center text-4xl md:text-6xl shadow-2xl mb-6 md:mb-8 mx-auto animate-pulse">
-                ${isReady ? '🍔' : '✓'}
-             </div>
-             
-             <h1 class="text-4xl md:text-7xl font-[1000] mb-3 md:mb-4 tracking-tighter uppercase drop-shadow-lg leading-none">
-                ${isReady ? '¡TU PEDIDO ESTÁ LISTO!' : '¡PEDIDO RECIBIDO!'}
-             </h1>
-             <p class="text-lg md:text-3xl font-medium opacity-90 mb-8 md:mb-12">
-                ${isReady ? 'Por favor, pasa a recoger tu orden por el mostrador.' : 'Dirígete a caja e indica tu número de pedido'}
-             </p>
-             
-             <div class="bg-white text-gray-800 rounded-[2rem] md:rounded-[3rem] p-8 md:p-12 shadow-2xl transform -rotate-1 border-t-8 ${isReady ? 'border-blue-400' : 'border-yellow-400'} relative">
-                <div class="absolute -top-4 md:-top-6 left-1/2 -translate-x-1/2 ${isReady ? 'bg-blue-400' : 'bg-yellow-400'} text-black px-4 md:px-6 py-1.5 md:py-2 rounded-full font-black text-xs md:text-sm tracking-widest uppercase shadow-md whitespace-nowrap">
-                    Tu Número de Orden
-                </div>
-                <p class="text-7xl md:text-9xl font-[1000] tracking-tighter text-gray-900 mb-1">
-                    #${String(kioskState.lastOrderId).slice(-3)}
-                </p>
-                <div class="w-full h-1 bg-gray-100 my-4 md:my-6"></div>
-                <p class="text-base md:text-xl font-bold text-gray-400 uppercase tracking-widest">Estado: <span class="${isReady ? 'text-blue-600' : 'text-green-600'}">${isReady ? 'LISTO PARA RECOGER' : 'EN PREPARACIÓN'}</span></p>
-             </div>
-             
-             <div class="mt-8 md:mt-16">
-                 <button onclick="kioskFinish()" class="bg-white ${isReady ? 'text-blue-700' : 'text-green-700'} font-black px-10 py-5 md:px-16 md:py-6 rounded-full shadow-xl text-lg md:text-2xl hover:bg-gray-50 transition transform hover:scale-105 active:scale-95 uppercase tracking-tight">
-                    Nuevo Pedido
-                 </button>
-             </div>
+         <!-- Main Content (Scrollable) -->
+         <div class="flex-1 flex flex-col items-center justify-center px-4 py-6 relative z-10 overflow-y-auto">
+              
+              <!-- Status Icon -->
+              <div class="bg-white/20 backdrop-blur-md rounded-full w-20 h-20 flex items-center justify-center text-4xl mb-4 ${cfg.pulse ? 'animate-pulse' : ''} shadow-xl">
+                 ${cfg.icon}
+              </div>
+              
+              <!-- Title -->
+              <h1 class="text-3xl sm:text-4xl font-extrabold text-center tracking-tight uppercase mb-2 drop-shadow-lg leading-tight">
+                 ${cfg.title}
+              </h1>
+              <p class="text-base sm:text-lg opacity-90 text-center mb-6 max-w-xs">
+                 ${cfg.subtitle}
+              </p>
+              
+              <!-- Order Card -->
+              <div class="bg-white text-gray-900 rounded-3xl p-6 shadow-2xl w-full max-w-xs relative">
+                 <div class="absolute -top-3 left-1/2 -translate-x-1/2 ${cfg.badgeColor} text-black px-4 py-1 rounded-full font-bold text-[10px] tracking-widest uppercase shadow-md">
+                     Tu Número de Orden
+                 </div>
+                 <p class="text-6xl font-extrabold tracking-tighter text-center mt-2 mb-3">
+                     #${orderNum}
+                 </p>
+                 <div class="w-full h-px bg-gray-100 mb-3"></div>
+                 <div class="flex items-center justify-center gap-2">
+                     <span class="w-2 h-2 rounded-full ${cfg.pulse ? 'animate-ping' : ''} ${cfg.badgeColor.replace('bg-', 'bg-')}"></span>
+                     <p class="text-sm font-bold uppercase tracking-widest ${cfg.statusColor}">${cfg.statusText}</p>
+                 </div>
+              </div>
+
+              ${displayStatus === 'pending' || displayStatus === 'accepted' ? `
+              <!-- Waiting Animation -->
+              <div class="mt-6 flex items-center gap-2 opacity-70">
+                  <div class="w-2 h-2 bg-white rounded-full animate-bounce" style="animation-delay: 0ms"></div>
+                  <div class="w-2 h-2 bg-white rounded-full animate-bounce" style="animation-delay: 150ms"></div>
+                  <div class="w-2 h-2 bg-white rounded-full animate-bounce" style="animation-delay: 300ms"></div>
+              </div>
+              ` : ''}
+         </div>
+
+         <!-- Bottom Actions (Sticky) -->
+         <div class="px-4 pb-4 pt-2 relative z-10 space-y-2">
+              <!-- Chat Button (Always visible) -->
+              <button onclick="toggleKioskChat()" class="w-full h-14 bg-white/20 backdrop-blur-md text-white font-bold text-base rounded-2xl transition-all flex items-center justify-center gap-3 active:scale-[0.98] border border-white/20">
+                  <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
+                  <span>Chat con el Cajero</span>
+                  ${kioskState.messages.length > 0 ? '<span class="w-2 h-2 bg-red-500 rounded-full animate-pulse"></span>' : ''}
+              </button>
+
+              ${isFinished ? `
+              <!-- New Order Button (only when finished) -->
+              <button onclick="kioskFinish()" class="w-full h-14 bg-white text-gray-900 font-bold text-base rounded-2xl shadow-lg transition-all flex items-center justify-center gap-2 active:scale-[0.98]">
+                  <span>Nuevo Pedido</span>
+              </button>
+              ` : ''}
          </div>
       </div>
     `;
 
     window.kioskFinish = () => {
         store.clearCart();
+        clearActiveOrder();
         kioskState.lastOrderId = null;
         kioskState.orderStatus = 'pending';
         kioskState.messages = [];
@@ -753,20 +909,29 @@ window.toggleKioskChat = () => {
 };
 
 window.sendKioskMessage = async (e) => {
-    e.preventDefault();
+    if (e) e.preventDefault();
     const input = document.getElementById('chat-input');
     const msg = input.value.trim();
     if (!msg) return;
 
+    input.value = ''; // Instant feedback
     const customerName = store.user?.full_name || store.customerName || 'Cliente';
+    
+    // Auto-scroll to bottom immediately for better UX
+    setTimeout(() => {
+        const msgs = document.getElementById('chat-messages');
+        if (msgs) msgs.scrollTop = msgs.scrollHeight;
+    }, 10);
+
     const { error } = await supabase.from('order_messages').insert({
         order_id: kioskState.lastOrderId, 
         sender_name: customerName,
         message: msg
     });
 
-    if (!error) {
-        input.value = '';
+    if (error) {
+        alert("Error al enviar: " + error.message);
+        input.value = msg; // Restore if failed
     }
 };
 
@@ -806,6 +971,7 @@ window.kioskCheckout = async () => {
         kioskState.lastOrderId = data.id;
         kioskState.orderStatus = 'pending';
         kioskState.messages = []; // Clear for new order context
+        saveActiveOrder();
         setKioskScreen('success');
     } else {
         alert("Error al procesar: " + error.message);
@@ -830,3 +996,28 @@ window.kioskLogout = async () => {
         location.reload(); // Hard reset for clean state
     }
 };
+
+let productsSubscription = null;
+function setupKioskProductsRealtime(container) {
+    if (productsSubscription) return;
+
+    productsSubscription = supabase
+        .channel('kiosk-products-realtime')
+        .on(
+            'postgres_changes',
+            { event: '*', schema: 'public', table: 'products' },
+            async (payload) => {
+                console.log('Product change detected:', payload);
+                // Refresh local cache
+                const { data } = await supabase.from('products').select('*');
+                if (data) {
+                    kioskCache.products = data;
+                    // Only re-render if we are on the menu screen
+                    if (kioskState.screen === 'menu') {
+                        renderMenuScreen(container);
+                    }
+                }
+            }
+        )
+        .subscribe();
+}

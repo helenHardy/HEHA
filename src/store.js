@@ -140,7 +140,7 @@ export const store = {
     },
 
     updateCartQuantity(productId, delta) {
-        const item = this.cart.find(i => i.product.id === productId);
+        const item = this.cart.find(i => i.product.id == productId);
         if (item) {
             item.quantity += delta;
             if (item.quantity <= 0) {
