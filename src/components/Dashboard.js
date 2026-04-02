@@ -1,3 +1,4 @@
+import { supabase } from '../services/supabase.js';
 import { getDailyReport, getWeeklySales } from './Reports.js';
 import { store } from '../store.js';
 
@@ -20,6 +21,13 @@ export async function renderDashboard(container) {
         getDailyReport(),
         getWeeklySales()
     ]);
+    
+    // Manual filter for alerts since PostgREST doesn't support column-to-column compare easily in one step
+    let alerts = [];
+    const { data: allIngs } = await supabase.from('ingredients').select('*').eq('branch_id', store.activeBranchId);
+    if (allIngs) {
+        alerts = allIngs.filter(i => i.stock <= i.min_stock).slice(0, 5);
+    }
 
     const report = reportData || {
         totalSales: 0,
@@ -147,6 +155,24 @@ export async function renderDashboard(container) {
                     </div>
                 </div>
             </div>
+
+             <!-- ALERTS SECTION -->
+             ${alerts.length > 0 ? `
+             <div class="grid grid-cols-1 gap-4">
+                ${alerts.map(a => `
+                    <div class="bg-red-50 border border-red-100 p-4 rounded-2xl flex items-center justify-between animate-pulse">
+                        <div class="flex items-center gap-4">
+                            <span class="text-2xl">⚠️</span>
+                            <div>
+                                <p class="text-xs font-black text-red-600 uppercase tracking-widest">Stock Crítico: ${a.name}</p>
+                                <p class="text-[10px] text-red-400 font-bold uppercase">Solo quedan ${a.stock} ${a.unit} (Mínimo: ${a.min_stock})</p>
+                            </div>
+                        </div>
+                        <button onclick="setView('ingredients')" class="bg-red-600 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-black transition">Reponer</button>
+                    </div>
+                `).join('')}
+             </div>
+             ` : ''}
 
             <!-- Main Dashboard Content -->
             <div class="grid grid-cols-1 lg:grid-cols-5 gap-8">

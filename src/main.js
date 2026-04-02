@@ -11,6 +11,8 @@ import { renderDashboard } from './components/Dashboard.js';
 import { renderKitchenView } from './components/Kitchen.js';
 import { renderInventoryView } from './components/Inventory.js';
 import { renderIngredientManager } from './components/IngredientManager.js';
+import { renderBranchSelector } from './components/BranchSelector.js';
+import { renderBranchManager } from './components/BranchManager.js';
 
 // Basic Router State
 let currentView = localStorage.getItem('heha_current_view') || 'dashboard'; 
@@ -26,7 +28,8 @@ async function updateKioskBadge() {
     .from('orders')
     .select('*', { count: 'exact', head: true })
     .eq('status', 'pending')
-    .eq('cashier_name', 'Kiosco');
+    .eq('cashier_name', 'Kiosco')
+    .eq('branch_id', store.activeBranchId);
 
   if (!error && count > 0) {
     badge.innerText = count;
@@ -482,6 +485,7 @@ async function renderAuthenticatedLayout() {
                ${renderNavLink('inventory', '📦', 'Inventario', isCollapsed)}
                ${renderNavLink('ingredients', '🍗', 'Ingredientes', isCollapsed)}
                ${renderNavLink('reports', '📊', 'Reportes', isCollapsed)}
+               ${renderNavLink('branches', '🏛️', 'Sucursales', isCollapsed)}
                ${renderNavLink('users', '👥', 'Usuarios', isCollapsed)}
                ${renderNavLink('kiosk', '🖥️', 'Modo Kiosco', isCollapsed)}
              ` : `
@@ -516,12 +520,13 @@ async function renderAuthenticatedLayout() {
                  </div>
               </div>
               
-              <div class="flex items-center gap-4">
-                 <div class="hidden sm:flex items-center gap-2 px-4 py-2 bg-gray-50 rounded-2xl border border-gray-100">
+               <div class="flex items-center gap-4">
+                  <div id="branch-selector-root"></div>
+                  <div class="hidden sm:flex items-center gap-2 px-4 py-2 bg-gray-50 rounded-2xl border border-gray-100">
                     <span class="text-lg">⏰</span>
                     <span class="font-black text-sm text-gray-600 tabular-nums" id="live-clock">00:00:00</span>
-                 </div>
-              </div>
+                  </div>
+               </div>
            </header>
            
            <div id="page-content" class="flex-1 overflow-auto p-4 md:p-10 bg-[#f8f9fc] relative scrollbar-hide">
@@ -618,7 +623,8 @@ async function renderAuthenticatedLayout() {
         description: desc,
         amount: amount,
         expense_type: type,
-        created_by: store.user.id
+        created_by: store.user.id,
+        branch_id: store.activeBranchId
       });
 
       if (error) throw error;
@@ -645,6 +651,10 @@ async function renderAuthenticatedLayout() {
   const tag = document.getElementById('view-title-tag');
   if (tag) tag.innerText = getViewTitle(currentView);
 
+  // Render Branch Selector
+  const branchRoot = document.getElementById('branch-selector-root');
+  if (branchRoot) renderBranchSelector(branchRoot);
+
   if (currentView === 'dashboard') {
     renderDashboard(pageContent);
   } else if (currentView === 'pos') {
@@ -666,6 +676,8 @@ async function renderAuthenticatedLayout() {
     renderInventoryView(pageContent);
   } else if (currentView === 'ingredients') {
     renderIngredientManager(pageContent);
+  } else if (currentView === 'branches') {
+    renderBranchManager(pageContent);
   } else if (currentView === 'cash') {
     // ---- CASHIER VIEW LOGIC ----
 
@@ -831,9 +843,28 @@ window.setPosCategory = (cat) => {
 };
 
 async function loadProducts() {
-  const { data } = await supabase.from('products').select('*').order('name');
+  if (!store.activeBranchId) return;
+
+  const { data, error } = await supabase
+    .from('branch_products')
+    .select('*, products(*)')
+    .eq('branch_id', store.activeBranchId);
+
+  if (error) {
+    console.error('Error loading branch products:', error);
+    return;
+  }
+
   if (data) {
-    allProducts = data;
+    allProducts = data.map(bp => ({
+      ...bp.products,
+      price: bp.price,
+      stock: bp.stock,
+      is_available: bp.is_available,
+      track_stock: bp.track_stock,
+      branch_item_id: bp.id
+    })).sort((a, b) => a.name.localeCompare(b.name));
+
     renderCategories();
     renderProductGrid();
     setupProductsRealtime();
@@ -842,29 +873,21 @@ async function loadProducts() {
 
 let productsSubscription = null;
 function setupProductsRealtime() {
-  if (productsSubscription) return;
+  if (productsSubscription || !store.activeBranchId) return;
 
   productsSubscription = supabase
     .channel('pos-products-realtime')
     .on(
         'postgres_changes',
-        { event: '*', schema: 'public', table: 'products' },
-        async (payload) => {
-            console.log('📦 Product change detected!', payload);
-            // Re-fetch to get fresh data
-            const { data } = await supabase.from('products').select('*').order('name');
-            if (data) {
-                allProducts = data;
-                // Only re-render if we are in the POS view
-                if (currentView === 'pos') {
-                    renderProductGrid();
-                    renderCategories();
-                } else if (currentView === 'products') {
-                    // Also refresh Product Manager if currently open
-                    const container = document.getElementById('page-content');
-                    if (container) renderProductManager(container);
-                }
-            }
+        { 
+          event: '*', 
+          schema: 'public', 
+          table: 'branch_products',
+          filter: `branch_id=eq.${store.activeBranchId}`
+        },
+        async () => {
+            console.log('📦 Branch product change detected!');
+            loadProducts();
         }
     )
     .subscribe();
@@ -1306,7 +1329,8 @@ window.handleCheckout = async (directPrint = false) => {
       advance_amount: order.advance_amount,
       customer_phone: order.customer_phone,
       delivery_location: order.delivery_location,
-      created_at: order.created_at
+      created_at: order.created_at,
+      branch_id: store.activeBranchId
     })
     .select()
     .single();
@@ -1363,7 +1387,8 @@ window.handleCheckout = async (directPrint = false) => {
       amount: order.total_amount,
       type: 'sale',
       description: `Venta POS #${order.id}`,
-      created_by: store.user.id
+      created_by: store.user.id,
+      branch_id: store.activeBranchId
     });
     if (cashMoveError) {
       console.error('Error recording cash move for sale:', cashMoveError);

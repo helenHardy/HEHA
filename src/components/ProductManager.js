@@ -1,10 +1,30 @@
 import { supabase } from '../services/supabase.js';
+import { store } from '../store.js';
 
 export async function renderProductManager(container) {
   // 1. Fetch Products and Categories
-  const { data: products } = await supabase.from('products').select('*').order('name');
+  // Fetch all global products
+  const { data: allProducts } = await supabase.from('products').select('*');
+  // Fetch branch-specific data for the active branch
+  const { data: branchData } = await supabase
+    .from('branch_products')
+    .select('*')
+    .eq('branch_id', store.activeBranchId);
+
+  const products = (allProducts || []).map(p => {
+    const bp = (branchData || []).find(x => x.product_id === p.id);
+    return {
+      ...p,
+      price: bp ? bp.price : p.price, // Fallback to global price if not set
+      stock: bp ? bp.stock : 0,
+      is_available: bp ? bp.is_available : true,
+      track_stock: bp ? bp.track_stock : false,
+      is_configured: !!bp // Helper to show if it has branch data
+    };
+  }).sort((a, b) => a.name.localeCompare(b.name));
+
   const { data: categories } = await supabase.from('categories').select('*').order('name');
-  const { data: ingredients } = await supabase.from('ingredients').select('*').order('name');
+  const { data: ingredients } = await supabase.from('ingredients').select('*').eq('branch_id', store.activeBranchId).order('name');
 
   // Ensure 'General' always exists in UI logic even if DB is empty (fallback)
   const categoryList = categories && categories.length > 0 ? categories : [{ name: 'General' }];
@@ -58,7 +78,8 @@ export async function renderProductManager(container) {
         <div class="bg-white p-10 rounded-[3.5rem] shadow-2xl border border-gray-100 relative overflow-hidden">
           <div class="absolute top-0 right-0 w-32 h-32 bg-primary/5 rounded-bl-full -mr-10 -mt-10"></div>
           
-          <h3 class="font-black text-2xl text-gray-800 tracking-tight mb-8" id="form-title">Agregar Producto</h3>
+          <h3 class="font-black text-2xl text-gray-800 tracking-tight" id="form-title">Agregar Producto</h3>
+          <p class="text-[10px] text-primary font-bold uppercase tracking-widest mb-8" id="form-branch-tag"></p>
           <input type="hidden" id="prod-id">
           
           <div class="grid grid-cols-1 md:grid-cols-3 gap-8 mb-10">
@@ -89,20 +110,26 @@ export async function renderProductManager(container) {
                   <input type="text" id="prod-name" placeholder="Ej. Hamburguesa Doble Queso" class="w-full px-6 py-4 rounded-2xl bg-gray-50 border-none focus:ring-2 focus:ring-primary/20 outline-none font-bold text-lg">
               </div>
               
-              <div>
+              <div class="col-span-1">
                   <label class="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 font-mono">Precio Venta (Bs)</label>
                   <div class="relative">
                      <span class="absolute left-6 top-1/2 -translate-y-1/2 font-black text-gray-300">Bs.</span>
-                     <input type="number" id="prod-price" placeholder="0.00" step="0.5" class="w-full pl-14 pr-6 py-4 rounded-2xl bg-gray-50 border-none focus:ring-2 focus:ring-primary/20 outline-none font-black text-xl text-primary">
+                     <input type="number" id="prod-price" placeholder="0.00" step="0.5" class="w-full pl-14 pr-6 py-4 rounded-2xl bg-gray-50 border-none focus:ring-4 focus:ring-primary/10 transition outline-none font-black text-xl text-primary">
                   </div>
               </div>
 
-              <div>
+              <div class="col-span-1">
                   <label class="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 font-mono">Costo Producción (Bs)</label>
-                  <div class="relative">
+                  <div class="relative group">
                      <span class="absolute left-6 top-1/2 -translate-y-1/2 font-black text-gray-300">Bs.</span>
-                     <input type="number" id="prod-cost" placeholder="0.00" step="0.5" class="w-full pl-14 pr-6 py-4 rounded-2xl bg-gray-50 border-none focus:ring-2 focus:ring-blue-500/20 outline-none font-black text-xl text-blue-500">
+                     <input type="number" id="prod-cost" placeholder="0.00" step="0.5" class="w-full pl-14 pr-6 py-4 rounded-2xl bg-gray-50 border-none focus:ring-4 focus:ring-blue-500/20 outline-none font-black text-xl text-blue-500">
+                     <button type="button" id="btn-calc-cost" class="absolute right-2 top-2 h-10 px-4 bg-orange-100 text-orange-600 rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-orange-500 hover:text-white transition opacity-0 group-hover:opacity-100">Receta ✨</button>
                   </div>
+              </div>
+
+              <div class="col-span-1 bg-gray-900 rounded-[2rem] p-6 flex flex-col justify-center border border-white/5 h-[76px] mt-6">
+                   <p class="text-[9px] font-black text-gray-500 uppercase tracking-widest">Utilidad Estimada</p>
+                   <p class="text-xl font-black text-green-400 font-mono" id="display-margin">0.00 Bs</p>
               </div>
               
               <div class="col-span-2">
@@ -321,34 +348,90 @@ export async function renderProductManager(container) {
     if (currentRecipe.length === 0) {
       recipeContainer.innerHTML = '';
       noRecipeMsg.classList.remove('hidden');
+      updatePriceStats();
       return;
     }
     noRecipeMsg.classList.add('hidden');
-    recipeContainer.innerHTML = currentRecipe.map((item, index) => `
-      <div class="flex gap-3 items-center animate-fade-in">
+    const totalRecipe = currentRecipe.reduce((sum, item) => {
+        const ing = ingredients.find(i => i.id == item.ingredient_id);
+        return sum + (ing ? (ing.unit_cost * item.quantity) : 0);
+    }, 0);
+
+    recipeContainer.innerHTML = currentRecipe.map((item, index) => {
+        const ing = ingredients.find(i => i.id == item.ingredient_id);
+        const subtotal = ing ? (ing.unit_cost * item.quantity).toFixed(2) : '0.00';
+        
+        return `
+      <div class="flex gap-3 items-center animate-fade-in group">
         <select class="recipe-ing-select flex-1 px-4 py-3 rounded-xl bg-white border border-gray-100 text-xs font-bold font-sans" data-index="${index}">
           <option value="">-- Seleccionar Insumo --</option>
           ${ingredients.map(ing => `<option value="${ing.id}" ${item.ingredient_id == ing.id ? 'selected' : ''}>${ing.name} (${ing.unit})</option>`).join('')}
         </select>
         <div class="w-24 relative">
-          <input type="number" step="1" min="1" class="recipe-qty-input w-full px-4 py-3 rounded-xl bg-white border border-gray-100 text-xs font-black text-center" value="${item.quantity}" data-index="${index}">
+          <input type="number" step="0.01" min="0.01" class="recipe-qty-input w-full px-4 py-3 rounded-xl bg-white border border-gray-100 text-xs font-black text-center" value="${item.quantity}" data-index="${index}">
+          <span class="absolute -top-2 left-2 bg-white px-1 text-[8px] font-black text-gray-400 uppercase tracking-widest">Cant</span>
+        </div>
+        <div class="w-24 text-right">
+           <p class="text-[9px] font-black text-gray-400 uppercase tracking-widest">Bs. ${subtotal}</p>
         </div>
         <button type="button" onclick="window.removeRecipeItem(${index})" class="w-10 h-10 flex items-center justify-center text-red-300 hover:text-red-500 hover:bg-red-50 rounded-xl transition">✕</button>
       </div>
-    `).join('');
+    `;
+    }).join('') + `
+    <!-- Total Recipe Footer -->
+    <div class="flex justify-end items-center gap-3 pt-6 mt-4 border-t border-dashed border-gray-100">
+        <p class="text-[10px] font-black text-gray-400 uppercase tracking-widest">Total Receta</p>
+        <p class="text-xl font-black text-gray-900 font-mono">Bs. ${totalRecipe.toFixed(2)}</p>
+        <div class="w-10"></div> <!-- spacer for the delete button alignment -->
+    </div>
+    `;
 
     // Attach local listeners to selects and inputs
     document.querySelectorAll('.recipe-ing-select').forEach(el => {
       el.onchange = (e) => {
         currentRecipe[e.target.dataset.index].ingredient_id = e.target.value;
+        renderRecipeItems();
+        updatePriceStats();
       };
     });
     document.querySelectorAll('.recipe-qty-input').forEach(el => {
       el.oninput = (e) => {
-        currentRecipe[e.target.dataset.index].quantity = parseInt(e.target.value) || 1;
+        currentRecipe[e.target.dataset.index].quantity = parseFloat(e.target.value) || 0;
+        renderRecipeItems();
+        updatePriceStats();
       };
     });
   };
+
+  const updatePriceStats = () => {
+    const price = parseFloat(document.getElementById('prod-price').value) || 0;
+    const costInput = document.getElementById('prod-cost');
+    const marginDisplay = document.getElementById('display-margin');
+
+    const recipeCost = currentRecipe.reduce((sum, item) => {
+       const ing = ingredients.find(i => i.id == item.ingredient_id);
+       return sum + (ing ? (ing.unit_cost * item.quantity) : 0);
+    }, 0);
+
+    const activeCost = parseFloat(costInput.value) || 0;
+    const margin = price - activeCost;
+    
+    marginDisplay.innerText = `${margin.toFixed(2)} Bs`;
+    marginDisplay.className = `text-xl font-black font-mono ${margin >= 0 ? 'text-green-400' : 'text-red-400'}`;
+  };
+
+  document.getElementById('btn-calc-cost').onclick = () => {
+     const recipeCost = currentRecipe.reduce((sum, item) => {
+       const ing = ingredients.find(i => i.id == item.ingredient_id);
+       return sum + (ing ? (ing.unit_cost * item.quantity) : 0);
+     }, 0);
+     document.getElementById('prod-cost').value = recipeCost.toFixed(2);
+     updatePriceStats();
+     window.showToast('✨ Costo actualizado según receta');
+  };
+
+  document.getElementById('prod-price').oninput = updatePriceStats;
+  document.getElementById('prod-cost').oninput = updatePriceStats;
 
   document.getElementById('btn-add-recipe-item').onclick = () => {
     currentRecipe.push({ ingredient_id: '', quantity: 1 });
@@ -375,6 +458,8 @@ export async function renderProductManager(container) {
     currentRecipe = [];
     renderRecipeItems();
     document.getElementById('form-title').innerText = 'Nuevo Plato en el Menú';
+    const branch = store.branches.find(b => b.id === store.activeBranchId);
+    document.getElementById('form-branch-tag').innerText = `Configurando para: ${branch?.name || 'Sucursal Actual'}`;
     catManager.classList.add('hidden');
     formSection.classList.remove('hidden');
     formSection.scrollIntoView({ behavior: 'smooth' });
@@ -501,14 +586,18 @@ export async function renderProductManager(container) {
 
     const productData = {
       name,
-      price: parseFloat(price),
-      cost: parseFloat(cost) || 0,
       category,
+      image_url,
+      description,
+      cost: parseFloat(cost) || 0
+    };
+
+    const branchProductData = {
+      price: parseFloat(price),
       track_stock,
       is_available,
       stock: parseInt(stock) || 0,
-      image_url,
-      description
+      branch_id: store.activeBranchId
     };
 
     let result;
@@ -519,12 +608,26 @@ export async function renderProductManager(container) {
     }
 
     if (result.error) {
-      window.showToast('Error al guardar: ' + result.error.message, 'error');
-      btn.disabled = false;
-      btn.innerText = 'Guardar Producto';
-    } else {
+       window.showToast('Error al guardar: ' + result.error.message, 'error');
+       btn.disabled = false;
+       btn.innerText = 'Guardar Producto';
+       return;
+    }
+
+    // Update branch_products
+    const prodId = result.data.id;
+    const { error: branchError } = await supabase
+      .from('branch_products')
+      .upsert({
+        product_id: prodId,
+        branch_id: store.activeBranchId,
+        ...branchProductData
+      }, { onConflict: 'branch_id, product_id' });
+
+    if (branchError) {
+      window.showToast('Error al guardar datos de sucursal: ' + branchError.message, 'error');
+    }
       // Save Recipe
-      const prodId = result.data.id;
       // 1. Delete old recipe
       await supabase.from('product_ingredients').delete().eq('product_id', prodId);
       // 2. Insert new recipe items
@@ -540,7 +643,6 @@ export async function renderProductManager(container) {
       clearFormFields();
       currentRecipe = [];
       renderProductManager(container);
-    }
   });
 
   // Load and Render Recipe Tabs in Table
@@ -565,17 +667,23 @@ export async function renderProductManager(container) {
   // Global Actions
   window.editProduct = async (id) => {
     const { data: p } = await supabase.from('products').select('*').eq('id', id).single();
+    const { data: bp } = await supabase.from('branch_products').select('*').eq('product_id', id).eq('branch_id', store.activeBranchId).maybeSingle();
+    
     if (p) {
       document.getElementById('prod-id').value = p.id;
       document.getElementById('prod-name').value = p.name;
-      document.getElementById('prod-price').value = p.price;
+      // Use branch price if exists, else global
+      document.getElementById('prod-price').value = bp ? bp.price : p.price;
       document.getElementById('prod-cost').value = p.cost;
       document.getElementById('prod-category').value = p.category || 'General';
-      document.getElementById('prod-track-stock').checked = p.track_stock || false;
-      document.getElementById('prod-available').checked = p.is_available !== false;
-      document.getElementById('prod-stock').value = p.stock || 0;
+      document.getElementById('prod-track-stock').checked = bp ? bp.track_stock : false;
+      document.getElementById('prod-available').checked = bp ? bp.is_available : true;
+      document.getElementById('prod-stock').value = bp ? bp.stock : 0;
       document.getElementById('prod-image-url').value = p.image_url;
       document.getElementById('prod-desc').value = p.description;
+
+      const branch = store.branches.find(b => b.id === store.activeBranchId);
+      document.getElementById('form-branch-tag').innerText = `Editando en: ${branch?.name || 'Sucursal Actual'}`;
 
       // Preview setup
       previewImg.src = p.image_url;
@@ -602,7 +710,12 @@ export async function renderProductManager(container) {
   };
 
   window.toggleProductAvailability = async (id, newStatus) => {
-    const { error } = await supabase.from('products').update({ is_available: newStatus }).eq('id', id);
+    const { error } = await supabase
+      .from('branch_products')
+      .update({ is_available: newStatus })
+      .eq('product_id', id)
+      .eq('branch_id', store.activeBranchId);
+    
     if (error) showToast('Error al actualizar disponibilidad', 'error');
     else {
       showToast(newStatus ? '✅ Producto disponible' : '🚫 Producto marcado como agotado');
@@ -644,7 +757,9 @@ function clearFormFields() {
 // Manual Stock Adjustments for Product Manager
 window.openRefillModal = async (id) => {
   const { data: p } = await supabase.from('products').select('*').eq('id', id).single();
+  const { data: bp } = await supabase.from('branch_products').select('*').eq('product_id', id).eq('branch_id', store.activeBranchId).maybeSingle();
   if (!p) return;
+  const currentStock = bp ? bp.stock : 0;
 
   const modalHTML = `
         <div id="refill-modal" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-[200] flex items-center justify-center p-4 animate-fade-in text-gray-800">
@@ -656,7 +771,7 @@ window.openRefillModal = async (id) => {
                 <div class="my-8">
                     <p class="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Unidades a añadir</p>
                     <input type="number" id="refill-qty" value="10" min="1" class="w-full text-center text-5xl font-black p-4 bg-gray-50 rounded-3xl border-2 border-transparent focus:border-green-500 focus:bg-white outline-none transition-all text-green-600">
-                    <p class="text-[10px] font-black text-gray-400 uppercase tracking-widest mt-2">Stock actual: ${p.stock}</p>
+                    <p class="text-[10px] font-black text-gray-400 uppercase tracking-widest mt-2">Stock actual en sucursal: ${currentStock}</p>
                 </div>
 
                 <div class="grid grid-cols-2 gap-4">
@@ -675,7 +790,12 @@ window.openRefillModal = async (id) => {
     const qty = parseInt(document.getElementById('refill-qty').value);
     if (isNaN(qty) || qty <= 0) return showToast('Cantidad no válida', 'error');
 
-    const { error } = await supabase.from('products').update({ stock: (p.stock || 0) + qty }).eq('id', id);
+    const { error } = await supabase
+      .from('branch_products')
+      .update({ stock: currentStock + qty })
+      .eq('product_id', id)
+      .eq('branch_id', store.activeBranchId);
+    
     if (error) showToast('Error al actualizar', 'error');
     else {
       showToast('✅ Inventario actualizado');
@@ -694,7 +814,9 @@ window.openRefillModal = async (id) => {
 
 window.openWithdrawModal = async (id) => {
   const { data: p } = await supabase.from('products').select('*').eq('id', id).single();
+  const { data: bp } = await supabase.from('branch_products').select('*').eq('product_id', id).eq('branch_id', store.activeBranchId).maybeSingle();
   if (!p) return;
+  const currentStock = bp ? bp.stock : 0;
 
   const modalHTML = `
         <div id="withdraw-modal" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-[200] flex items-center justify-center p-4 animate-fade-in text-gray-800">
@@ -708,7 +830,7 @@ window.openWithdrawModal = async (id) => {
                 <div class="space-y-4 mb-8">
                     <div>
                         <label class="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Unidades a retirar</label>
-                        <input type="number" id="withdraw-qty" value="1" min="1" max="${p.stock}" class="w-full text-center text-4xl font-black p-4 bg-gray-50 rounded-2xl border-2 border-transparent focus:border-red-500 focus:bg-white outline-none transition-all text-red-500">
+                        <input type="number" id="withdraw-qty" value="1" min="1" max="${currentStock}" class="w-full text-center text-4xl font-black p-4 bg-gray-50 rounded-2xl border-2 border-transparent focus:border-red-500 focus:bg-white outline-none transition-all text-red-500">
                     </div>
                     <div>
                         <label class="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">Motivo / Razón</label>
@@ -742,9 +864,10 @@ window.openWithdrawModal = async (id) => {
     if (qty > p.stock) return showToast('No puedes retirar más de lo que hay', 'error');
 
     const { error } = await supabase
-      .from('products')
-      .update({ stock: p.stock - qty })
-      .eq('id', id);
+      .from('branch_products')
+      .update({ stock: currentStock - qty })
+      .eq('product_id', id)
+      .eq('branch_id', store.activeBranchId);
 
     if (error) showToast('Error al procesar salida', 'error');
     else {

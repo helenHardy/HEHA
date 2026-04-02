@@ -2,16 +2,26 @@ import { supabase } from '../services/supabase.js';
 import { store } from '../store.js';
 
 export async function renderInventoryView(container) {
-    // 1. Fetch products with stock tracking
-    const { data: products } = await supabase
-        .from('products')
-        .select('*')
-        .eq('track_stock', true)
-        .order('stock', { ascending: true });
+    // 1. Fetch products with stock tracking for the current branch
+    const { data: branchData } = await supabase
+        .from('branch_products')
+        .select('*, products(*)')
+        .eq('branch_id', store.activeBranchId)
+        .eq('track_stock', true);
+    
+    const products = (branchData || []).map(bp => ({
+        ...bp.products,
+        stock: bp.stock,
+        price: bp.price,
+        is_available: bp.is_available,
+        track_stock: bp.track_stock,
+        branch_item_id: bp.id
+    })).sort((a, b) => a.stock - b.stock);
 
     const { data: ingredients } = await supabase
         .from('ingredients')
         .select('*')
+        .eq('branch_id', store.activeBranchId)
         .order('stock', { ascending: true });
 
     const categories = ['Todos', ...new Set(products ? products.map(p => p.category || 'General') : [])];
@@ -268,7 +278,8 @@ export async function renderInventoryView(container) {
             const { error } = await supabase
                 .from('ingredients')
                 .update({ stock: currentStock + parseInt(amount) })
-                .eq('id', id);
+                .eq('id', id)
+                .eq('branch_id', store.activeBranchId);
 
             if (error) throw error;
             window.showToast('📦 Stock de insumo actualizado');
@@ -282,13 +293,20 @@ export async function renderInventoryView(container) {
     // Global Actions
     window.quickRefill = async (id, amount) => {
         if (store.user?.role !== 'admin') return;
-        const { data: p } = await supabase.from('products').select('stock').eq('id', id).single();
-        if (!p) return;
+        const { data: bp } = await supabase
+            .from('branch_products')
+            .select('stock')
+            .eq('product_id', id)
+            .eq('branch_id', store.activeBranchId)
+            .single();
+
+        if (!bp) return;
 
         const { error } = await supabase
-            .from('products')
-            .update({ stock: (p.stock || 0) + amount })
-            .eq('id', id);
+            .from('branch_products')
+            .update({ stock: (bp.stock || 0) + amount })
+            .eq('product_id', id)
+            .eq('branch_id', store.activeBranchId);
 
         if (error) showToast('Error al actualizar stock', 'error');
         else {
@@ -299,8 +317,15 @@ export async function renderInventoryView(container) {
 
     window.openRefillModal = async (id) => {
         if (store.user?.role !== 'admin') return showToast('Solo administradores pueden reponer stock', 'error');
-        const { data: p } = await supabase.from('products').select('*').eq('id', id).single();
-        if (!p) return;
+        const { data: bp } = await supabase
+            .from('branch_products')
+            .select('*, products(*)')
+            .eq('product_id', id)
+            .eq('branch_id', store.activeBranchId)
+            .single();
+
+        if (!bp) return;
+        const p = { ...bp.products, stock: bp.stock };
 
         const modalHTML = `
             <div id="refill-modal" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-[200] flex items-center justify-center p-4 animate-fade-in text-gray-800">
@@ -331,7 +356,12 @@ export async function renderInventoryView(container) {
             const qty = parseInt(document.getElementById('refill-qty').value);
             if (isNaN(qty) || qty <= 0) return showToast('Cantidad no válida', 'error');
 
-            const { error } = await supabase.from('products').update({ stock: (p.stock || 0) + qty }).eq('id', id);
+            const { error } = await supabase
+                .from('branch_products')
+                .update({ stock: (p.stock || 0) + qty })
+                .eq('product_id', id)
+                .eq('branch_id', store.activeBranchId);
+
             if (error) showToast('Error al actualizar', 'error');
             else {
                 showToast('✨ Inventario actualizado');
@@ -349,8 +379,15 @@ export async function renderInventoryView(container) {
 
     window.openWithdrawModal = async (id) => {
         if (store.user?.role !== 'admin') return showToast('Solo administradores pueden registrar salidas', 'error');
-        const { data: p } = await supabase.from('products').select('*').eq('id', id).single();
-        if (!p) return;
+        const { data: bp } = await supabase
+            .from('branch_products')
+            .select('*, products(*)')
+            .eq('product_id', id)
+            .eq('branch_id', store.activeBranchId)
+            .single();
+
+        if (!bp) return;
+        const p = { ...bp.products, stock: bp.stock };
 
         const modalHTML = `
             <div id="withdraw-modal" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-[200] flex items-center justify-center p-4 animate-fade-in text-gray-800">
@@ -397,9 +434,10 @@ export async function renderInventoryView(container) {
             if (qty > p.stock) return showToast('No puedes retirar más de lo que hay', 'error');
 
             const { error } = await supabase
-                .from('products')
+                .from('branch_products')
                 .update({ stock: p.stock - qty })
-                .eq('id', id);
+                .eq('product_id', id)
+                .eq('branch_id', store.activeBranchId);
 
             if (error) showToast('Error al procesar salida', 'error');
             else {

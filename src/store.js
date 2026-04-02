@@ -5,6 +5,8 @@ export const store = {
     customerName: '', // For public Kiosk access
     posCustomerName: '', // For POS access
     cart: [],
+    branches: [],
+    activeBranchId: localStorage.getItem('activeBranchId'),
     currentSession: null, // Cash register session
 
     // POS State
@@ -28,6 +30,53 @@ export const store = {
 
     notify() {
         this.listeners.forEach(fn => fn(this));
+    },
+
+    async fetchUserBranches() {
+        if (!this.user) return;
+        
+        // Kiosk users don't need branches in the same way, but let's fetch for staff
+        if (this.user.role === 'cliente' || this.user.role === 'kiosco') return;
+
+        let query = supabase.from('branches').select('*');
+        
+        if (this.user.role !== 'admin') {
+            const { data: profileBranches } = await supabase
+                .from('profile_branches')
+                .select('branch_id')
+                .eq('profile_id', this.user.id);
+            
+            const branchIds = profileBranches?.map(pb => pb.branch_id) || [];
+            if (branchIds.length > 0) {
+                query = query.in('id', branchIds);
+            } else {
+                this.branches = [];
+                this.activeBranchId = null;
+                this.notify();
+                return;
+            }
+        }
+
+        const { data: branches, error } = await query;
+        if (error) console.error('Error fetching branches:', error);
+        
+        this.branches = branches || [];
+        
+        // Pick active branch
+        const exists = this.branches.find(b => b.id == this.activeBranchId);
+        if (!this.activeBranchId || !exists) {
+            this.activeBranchId = this.branches[0]?.id || null;
+            if (this.activeBranchId) {
+                localStorage.setItem('activeBranchId', this.activeBranchId);
+            }
+        }
+        this.notify();
+    },
+
+    setActiveBranch(id) {
+        this.activeBranchId = id;
+        localStorage.setItem('activeBranchId', id);
+        this.notify();
     },
 
     async login(email, password) {
@@ -64,6 +113,8 @@ export const store = {
                 role: role,
                 full_name: profile?.full_name || data.user.user_metadata?.full_name || data.user.email
             };
+            
+            await this.fetchUserBranches();
             this.notify();
         }
         return { data };
@@ -114,6 +165,8 @@ export const store = {
 
             if (this.user.role === 'cliente') {
                 this.customerName = this.user.full_name;
+            } else {
+                await this.fetchUserBranches();
             }
 
             this.notify();
@@ -126,6 +179,9 @@ export const store = {
         await supabase.auth.signOut();
         this.user = null;
         this.cart = [];
+        this.branches = [];
+        this.activeBranchId = null;
+        localStorage.removeItem('activeBranchId');
         this.notify();
     },
 
@@ -157,5 +213,9 @@ export const store = {
 
     get cartTotal() {
         return this.cart.reduce((sum, item) => sum + (item.product.price * item.quantity), 0);
+    },
+
+    get activeBranch() {
+        return this.branches.find(b => b.id == this.activeBranchId) || null;
     }
 };

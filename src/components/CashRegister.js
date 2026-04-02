@@ -6,6 +6,7 @@ export async function checkOpenSession() {
   const { data, error } = await supabase
     .from('cash_register')
     .select('*')
+    .eq('branch_id', store.activeBranchId)
     .is('closed_at', null)
     .order('opened_at', { ascending: false })
     .limit(1)
@@ -24,7 +25,8 @@ export async function openRegister(initialCash) {
     .insert({
       initial_cash: parseFloat(initialCash),
       opened_at: new Date().toISOString(),
-      status: 'open'
+      status: 'open',
+      branch_id: store.activeBranchId
     })
     .select()
     .single();
@@ -75,7 +77,8 @@ export async function addCashMove(type, amount, reason) {
       type, // 'withdrawal' or 'deposit'
       amount: parseFloat(amount),
       reason,
-      performed_by: store.user.role === 'admin' ? 'Admin' : 'Cajero'
+      performed_by: store.user.role === 'admin' ? 'Admin' : 'Cajero',
+      branch_id: store.activeBranchId
     })
     .select()
     .single();

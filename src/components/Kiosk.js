@@ -40,6 +40,14 @@ let kioskCache = {
     categories: null
 };
 
+// Helper: Get Branch from URL or Store
+function getKioskBranchId() {
+    const params = new URLSearchParams(window.location.search);
+    const branchUrl = params.get('branch_id');
+    if (branchUrl) return parseInt(branchUrl);
+    return store.activeBranchId;
+}
+
 // Track previous state to avoid full re-renders
 let lastRenderedScreen = null;
 
@@ -118,13 +126,25 @@ function manageModalOverlay(container) {
  * Render Menu Screen
  */
 async function renderMenuScreen(container) {
-    // 1. Load Data (Cached)
+    // 1. Load Data (Cached) for specific branch
+    const branchId = getKioskBranchId();
     if (!kioskCache.products || !kioskCache.categories) {
         const [prodRes, catRes] = await Promise.all([
-            supabase.from('products').select('*'),
+            supabase
+                .from('branch_products')
+                .select('*, products(*)')
+                .eq('branch_id', branchId)
+                .eq('is_available', true),
             supabase.from('categories').select('*').order('name')
         ]);
-        kioskCache.products = prodRes.data;
+        
+        kioskCache.products = (prodRes.data || []).map(bp => ({
+            ...bp.products,
+            price: bp.price,
+            stock: bp.stock,
+            is_available: bp.is_available,
+            track_stock: bp.track_stock
+        }));
         kioskCache.categories = catRes.data;
     }
 
@@ -400,7 +420,7 @@ function setupKioskChatRealtime(container) {
             event: 'INSERT', 
             schema: 'public', 
             table: 'order_messages',
-            filter: filterId ? `order_id=eq.${filterId}` : `order_id=is.null`
+            filter: filterId ? `order_id=eq.${filterId}` : `branch_id=eq.${getKioskBranchId()}`
         }, (payload) => {
             kioskState.messages.push(payload.new);
             if (payload.new.sender_name !== (store.user?.full_name || store.customerName || 'Cliente')) {
@@ -414,7 +434,7 @@ function setupKioskChatRealtime(container) {
     const fetchMessages = async () => {
          let query = supabase.from('order_messages').select('*').order('created_at', { ascending: true });
          if (filterId) query = query.eq('order_id', filterId);
-         else query = query.is('order_id', null);
+         else query = query.is('order_id', null).eq('branch_id', getKioskBranchId());
          
          const { data } = await query;
          if (data) {
@@ -926,7 +946,8 @@ window.sendKioskMessage = async (e) => {
     const { error } = await supabase.from('order_messages').insert({
         order_id: kioskState.lastOrderId, 
         sender_name: customerName,
-        message: msg
+        message: msg,
+        branch_id: getKioskBranchId()
     });
 
     if (error) {
@@ -957,7 +978,8 @@ window.kioskCheckout = async () => {
         customer_name: customerName,
         created_at: new Date().toISOString(),
         scheduled_time: scheduledTime,
-        cashier_name: 'Kiosco'
+        cashier_name: 'Kiosco',
+        branch_id: getKioskBranchId()
     };
     const { data, error } = await supabase.from('orders').insert(orderData).select().single();
     if (data) {
@@ -1005,17 +1027,18 @@ function setupKioskProductsRealtime(container) {
         .channel('kiosk-products-realtime')
         .on(
             'postgres_changes',
-            { event: '*', schema: 'public', table: 'products' },
+            { 
+                event: '*', 
+                schema: 'public', 
+                table: 'branch_products', 
+                filter: `branch_id=eq.${getKioskBranchId()}` 
+            },
             async (payload) => {
-                console.log('Product change detected:', payload);
+                console.log('Branch Product change detected:', payload);
                 // Refresh local cache
-                const { data } = await supabase.from('products').select('*');
-                if (data) {
-                    kioskCache.products = data;
-                    // Only re-render if we are on the menu screen
-                    if (kioskState.screen === 'menu') {
-                        renderMenuScreen(container);
-                    }
+                kioskCache.products = null; // Clear to force re-fetch
+                if (kioskState.screen === 'menu') {
+                    renderMenuScreen(container);
                 }
             }
         )

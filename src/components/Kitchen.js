@@ -47,6 +47,7 @@ async function loadKitchenOrders() {
         .select('*, order_items(*, products(*))')
         .eq('kitchen_status', 'pending')
         .eq('status', 'completed')
+        .eq('branch_id', store.activeBranchId)
         .gte('created_at', today + 'T00:00:00-04:00')
         .order('created_at', { ascending: true });
 
@@ -159,11 +160,18 @@ function setupKitchenRealtime() {
         .channel('kitchen-realtime')
         .on(
             'postgres_changes',
-            { event: 'INSERT', schema: 'public', table: 'orders', filter: 'status=eq.completed' },
+            { 
+              event: 'INSERT', 
+              schema: 'public', 
+              table: 'orders', 
+              filter: `branch_id=eq.${store.activeBranchId}` 
+            },
             (payload) => {
-                if (window.playNotificationSound) window.playNotificationSound();
-                loadKitchenOrders();
-                showToast('👨‍🍳 ¡Nuevo pedido para cocina!', 'success');
+                if (payload.new.status === 'completed' && payload.new.kitchen_status === 'pending') {
+                    if (window.playNotificationSound) window.playNotificationSound();
+                    loadKitchenOrders();
+                    showToast('👨‍🍳 ¡Nuevo pedido para cocina!', 'success');
+                }
             }
         )
         .on(

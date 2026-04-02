@@ -1,4 +1,5 @@
 import { supabase } from '../services/supabase.js';
+import { store } from '../store.js';
 
 export async function getDailyReport(targetDate = null) {
     // Adjust for Bolivia Timezone (UTC-4) if no date provided
@@ -23,6 +24,7 @@ export async function getDailyReport(targetDate = null) {
         .from('orders')
         .select('*, order_items(*) ')
         .eq('status', 'completed')
+        .eq('branch_id', store.activeBranchId)
         .gte('created_at', startDate + 'T00:00:00-04:00')
         .lt('created_at', queryEndDetails + 'T00:00:00-04:00');
 
@@ -30,6 +32,7 @@ export async function getDailyReport(targetDate = null) {
     const { data: expenses } = await supabase
         .from('expenses')
         .select('*')
+        .eq('branch_id', store.activeBranchId)
         .gte('created_at', startDate + 'T00:00:00-04:00')
         .lt('created_at', queryEndDetails + 'T00:00:00-04:00');
 
@@ -43,10 +46,33 @@ export async function getDailyReport(targetDate = null) {
         });
     }
 
-    // 3. Fetch Products for Cost Analysis
+    // 3. Fetch Products, Ingredients and Recipes for Cost Analysis
     const { data: allProducts } = await supabase.from('products').select('id, name, cost, price');
+    const { data: allIngredients } = await supabase.from('ingredients').select('*'); // All branches
+    const { data: allRecipes } = await supabase.from('product_ingredients').select('*');
+
     const productMap = {};
     if (allProducts) allProducts.forEach(p => productMap[String(p.id)] = p);
+
+    // Map ingredients by ID for name lookup
+    const ingredientNameMap = {};
+    if (allIngredients) allIngredients.forEach(i => ingredientNameMap[String(i.id)] = i.name);
+
+    // Local branch ingredients (by name)
+    const localBranchIngredients = {};
+    if (allIngredients) {
+        allIngredients
+            .filter(i => i.branch_id == store.activeBranchId)
+            .forEach(i => localBranchIngredients[i.name.toLowerCase()] = i);
+    }
+
+    const recipesByProduct = {};
+    if (allRecipes) {
+        allRecipes.forEach(r => {
+            if (!recipesByProduct[String(r.product_id)]) recipesByProduct[String(r.product_id)] = [];
+            recipesByProduct[String(r.product_id)].push(r);
+        });
+    }
 
     // Calculations
     let totalSales = 0;
@@ -55,6 +81,8 @@ export async function getDailyReport(targetDate = null) {
     let salesCash = 0;
     let salesDigital = 0;
     let salesPending = 0;
+
+    const capitalBreakdown = {};
 
     if (orders) {
         orders.forEach(order => {
@@ -71,14 +99,46 @@ export async function getDailyReport(targetDate = null) {
                     const q = parseInt(item.quantity) || 1;
                     const p = productMap[String(item.product_id)];
                     if (p) {
-                        totalCost += (parseFloat(p.cost) || 0) * q;
-
+                        // 1. Simple product sales tracking
                         if (!productSales[p.name]) {
                             productSales[p.name] = { name: p.name, qty: 0, revenue: 0 };
                         }
                         productSales[p.name].qty += q;
                         const unitPrice = parseFloat(item.price_at_sale) || parseFloat(p.price) || 0;
                         productSales[p.name].revenue += unitPrice * q;
+
+                        // 2. Granular Capital Allocation (Recipe-based)
+                        const recipe = recipesByProduct[String(p.id)];
+                        let itemProductionCost = 0;
+
+                        if (recipe && recipe.length > 0) {
+                            recipe.forEach(recipeItem => {
+                                const templateIngredientName = ingredientNameMap[String(recipeItem.ingredient_id)];
+                                if (templateIngredientName) {
+                                    const localIng = localBranchIngredients[templateIngredientName.toLowerCase()];
+                                    const unitCost = localIng ? (parseFloat(localIng.unit_cost) || 0) : 0;
+                                    const costContribution = unitCost * recipeItem.quantity;
+                                    
+                                    itemProductionCost += costContribution;
+
+                                    if (!capitalBreakdown[templateIngredientName]) {
+                                        capitalBreakdown[templateIngredientName] = { 
+                                            name: templateIngredientName, 
+                                            qty: 0, 
+                                            capital: 0, 
+                                            unit: localIng?.unit || 'uni' 
+                                        };
+                                    }
+                                    capitalBreakdown[templateIngredientName].qty += recipeItem.quantity * q;
+                                    capitalBreakdown[templateIngredientName].capital += costContribution * q;
+                                }
+                            });
+                        } else {
+                            // No recipe, use manual cost
+                            itemProductionCost = (parseFloat(p.cost) || 0);
+                        }
+
+                        totalCost += itemProductionCost * q;
                     }
                 });
             }
@@ -93,6 +153,9 @@ export async function getDailyReport(targetDate = null) {
     const topProducts = Object.values(productSales)
         .sort((a, b) => b.qty - a.qty);
 
+    const sortedCapital = Object.values(capitalBreakdown)
+        .sort((a, b) => b.capital - a.capital);
+
     return {
         totalSales,
         totalCost,
@@ -100,6 +163,7 @@ export async function getDailyReport(targetDate = null) {
         ordersCount: orders?.length || 0,
         customerCount: orders?.length || 0,
         topProducts,
+        capitalBreakdown: sortedCapital,
         paymentBreakdown: { cash: salesCash, digital: salesDigital, pending: salesPending },
         expenses: { daily: dailyExpenses, fixed: fixedExpenses, list: expenses || [] },
         orders: orders || [],
@@ -117,6 +181,7 @@ export async function getWeeklySales() {
         .from('orders')
         .select('total_amount, created_at')
         .eq('status', 'completed')
+        .eq('branch_id', store.activeBranchId)
         .gte('created_at', startDateStr + 'T00:00:00-04:00');
 
     if (error) {
@@ -227,6 +292,40 @@ export async function renderReports(container, dateParam = null) {
                           </div>
                          `;
     }).join('') || '<p class="text-center text-gray-400 py-8 italic font-medium">No se registraron ventas aún.</p>'}
+                  </div>
+              </div>
+
+              <!-- CAPITAL ALLOCATION (REINVESTMENT) -->
+              <div class="bg-white p-8 rounded-3xl shadow-sm border border-gray-100">
+                  <div class="flex justify-between items-center mb-6">
+                      <div>
+                          <h3 class="text-lg font-black text-gray-800 uppercase tracking-tight">Separación de Capitales</h3>
+                          <p class="text-[10px] text-gray-400 font-bold uppercase tracking-widest">Dinero para reposición de insumos</p>
+                      </div>
+                      <div class="text-right">
+                          <p class="text-[10px] font-black text-gray-400 uppercase">Total Reinversión</p>
+                          <p class="text-xl font-black text-blue-600">Bs. ${report.capitalBreakdown.reduce((sum, c) => sum + c.capital, 0).toFixed(2)}</p>
+                      </div>
+                  </div>
+                  
+                  <div class="space-y-3 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
+                      ${report.capitalBreakdown.map(c => `
+                          <div class="flex items-center justify-between p-4 bg-gray-50 rounded-2xl border border-gray-100/50 hover:border-blue-100 transition">
+                              <div class="flex items-center gap-3">
+                                  <div class="w-10 h-10 bg-white rounded-xl flex items-center justify-center text-lg shadow-sm border border-gray-50">
+                                      ${c.name.toLowerCase().includes('pollo') ? '🍗' : c.name.toLowerCase().includes('pepsi') || c.name.toLowerCase().includes('gaseosa') ? '🥤' : '📦'}
+                                  </div>
+                                  <div>
+                                      <p class="text-xs font-black text-gray-800 uppercase tabular-nums">${c.name}</p>
+                                      <p class="text-[9px] text-gray-400 font-bold uppercase tracking-widest">Consumo: ${c.qty.toFixed(2)} ${c.unit}</p>
+                                  </div>
+                              </div>
+                              <div class="text-right">
+                                  <p class="text-sm font-black text-gray-900 font-mono">Bs. ${c.capital.toFixed(2)}</p>
+                                  <p class="text-[8px] font-black text-blue-400 uppercase tracking-tighter">A Capital</p>
+                              </div>
+                          </div>
+                      `).join('') || '<p class="text-center text-gray-300 py-10 italic text-xs">No hay datos de consumo para costeo granular.</p>'}
                   </div>
               </div>
 
