@@ -2021,6 +2021,7 @@ async function renderOrdersHistory(container) {
   const { data: orders, error } = await supabase
     .from('orders')
     .select('*, order_items(*, products(*))')
+    .eq('branch_id', store.activeBranchId)
     .gte('created_at', today + 'T00:00:00-04:00')
     .order('created_at', { ascending: false });
 
@@ -2074,6 +2075,7 @@ async function renderKioskManagerView(container) {
     .select('*, order_items(*, products(*))')
     .eq('status', 'pending')
     .eq('cashier_name', 'Kiosco')
+    .eq('branch_id', store.activeBranchId)
     .order('created_at', { ascending: false });
 
   const listContainer = document.getElementById('kiosk-pending-list');
