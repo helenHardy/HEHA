@@ -1,5 +1,5 @@
 import { supabase } from './services/supabase.js';
-
+//Nuevo hardy
 export const store = {
     user: null,
     customerName: '', // For public Kiosk access
@@ -34,18 +34,18 @@ export const store = {
 
     async fetchUserBranches() {
         if (!this.user) return;
-        
+
         // Kiosk users don't need branches in the same way, but let's fetch for staff
         if (this.user.role === 'cliente' || this.user.role === 'kiosco') return;
 
         let query = supabase.from('branches').select('*');
-        
+
         if (this.user.role !== 'admin') {
             const { data: profileBranches } = await supabase
                 .from('profile_branches')
                 .select('branch_id')
                 .eq('profile_id', this.user.id);
-            
+
             const branchIds = profileBranches?.map(pb => pb.branch_id) || [];
             if (branchIds.length > 0) {
                 query = query.in('id', branchIds);
@@ -59,9 +59,9 @@ export const store = {
 
         const { data: branches, error } = await query;
         if (error) console.error('Error fetching branches:', error);
-        
+
         this.branches = branches || [];
-        
+
         // Pick active branch
         const exists = this.branches.find(b => b.id == this.activeBranchId);
         if (!this.activeBranchId || !exists) {
@@ -97,7 +97,7 @@ export const store = {
                     .insert({
                         id: data.user.id,
                         email: data.user.email,
-                        role: 'cajero', 
+                        role: 'cajero',
                         full_name: data.user.user_metadata?.full_name || data.user.email
                     })
                     .select()
@@ -113,7 +113,7 @@ export const store = {
                 role: role,
                 full_name: profile?.full_name || data.user.user_metadata?.full_name || data.user.email
             };
-            
+
             await this.fetchUserBranches();
             this.notify();
         }
