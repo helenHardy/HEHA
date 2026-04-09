@@ -344,6 +344,13 @@ export async function renderProductManager(container) {
   const noRecipeMsg = document.getElementById('no-recipe-msg');
   let currentRecipe = [];
 
+  const conditionIcons = {
+    'always': '♾️',
+    'llevar': '🥡',
+    'mesa': '🍽️',
+    'whatsapp': '📱'
+  };
+
   const renderRecipeItems = () => {
     if (currentRecipe.length === 0) {
       recipeContainer.innerHTML = '';
@@ -362,19 +369,31 @@ export async function renderProductManager(container) {
         const subtotal = ing ? (ing.unit_cost * item.quantity).toFixed(2) : '0.00';
         
         return `
-      <div class="flex gap-3 items-center animate-fade-in group">
-        <select class="recipe-ing-select flex-1 px-4 py-3 rounded-xl bg-white border border-gray-100 text-xs font-bold font-sans" data-index="${index}">
+      <div class="flex gap-2 items-center animate-fade-in group">
+        <select class="recipe-ing-select flex-1 px-3 py-3 rounded-xl bg-white border border-gray-100 text-[10px] font-bold font-sans" data-index="${index}">
           <option value="">-- Seleccionar Insumo --</option>
           ${ingredients.map(ing => `<option value="${ing.id}" ${item.ingredient_id == ing.id ? 'selected' : ''}>${ing.name} (${ing.unit})</option>`).join('')}
         </select>
-        <div class="w-24 relative">
-          <input type="number" step="0.01" min="0.01" class="recipe-qty-input w-full px-4 py-3 rounded-xl bg-white border border-gray-100 text-xs font-black text-center" value="${item.quantity}" data-index="${index}">
+        
+        <div class="w-32 relative">
+          <select class="recipe-cond-select w-full px-3 py-3 rounded-xl bg-white border border-gray-100 text-[10px] font-black text-center pr-8" data-index="${index}">
+            <option value="always" ${item.usage_condition === 'always' || !item.usage_condition ? 'selected' : ''}> Siempre</option>
+            <option value="llevar" ${item.usage_condition === 'llevar' ? 'selected' : ''}>🥡 Llevar</option>
+            <option value="mesa" ${item.usage_condition === 'mesa' ? 'selected' : ''}>🍽️ Mesa</option>
+            <option value="whatsapp" ${item.usage_condition === 'whatsapp' ? 'selected' : ''}>📱 WA</option>
+          </select>
+          <span class="absolute -top-2 left-2 bg-white px-1 text-[8px] font-black text-gray-400 uppercase tracking-widest">Uso</span>
+        </div>
+
+        <div class="w-20 relative">
+          <input type="number" step="0.01" min="0.01" class="recipe-qty-input w-full px-3 py-3 rounded-xl bg-white border border-gray-100 text-[10px] font-black text-center" value="${item.quantity}" data-index="${index}">
           <span class="absolute -top-2 left-2 bg-white px-1 text-[8px] font-black text-gray-400 uppercase tracking-widest">Cant</span>
         </div>
-        <div class="w-24 text-right">
+        
+        <div class="w-20 text-right">
            <p class="text-[9px] font-black text-gray-400 uppercase tracking-widest">Bs. ${subtotal}</p>
         </div>
-        <button type="button" onclick="window.removeRecipeItem(${index})" class="w-10 h-10 flex items-center justify-center text-red-300 hover:text-red-500 hover:bg-red-50 rounded-xl transition">✕</button>
+        <button type="button" onclick="window.removeRecipeItem(${index})" class="w-8 h-8 flex items-center justify-center text-red-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition">✕</button>
       </div>
     `;
     }).join('') + `
@@ -390,6 +409,13 @@ export async function renderProductManager(container) {
     document.querySelectorAll('.recipe-ing-select').forEach(el => {
       el.onchange = (e) => {
         currentRecipe[e.target.dataset.index].ingredient_id = e.target.value;
+        renderRecipeItems();
+        updatePriceStats();
+      };
+    });
+    document.querySelectorAll('.recipe-cond-select').forEach(el => {
+      el.onchange = (e) => {
+        currentRecipe[e.target.dataset.index].usage_condition = e.target.value;
         renderRecipeItems();
         updatePriceStats();
       };
@@ -634,7 +660,12 @@ export async function renderProductManager(container) {
       const validRecipe = currentRecipe.filter(r => r.ingredient_id && r.quantity > 0);
       if (validRecipe.length > 0) {
         await supabase.from('product_ingredients').insert(
-          validRecipe.map(r => ({ product_id: prodId, ingredient_id: r.ingredient_id, quantity: r.quantity }))
+          validRecipe.map(r => ({ 
+            product_id: prodId, 
+            ingredient_id: r.ingredient_id, 
+            quantity: r.quantity,
+            usage_condition: r.usage_condition || 'always'
+          }))
         );
       }
 
@@ -654,11 +685,15 @@ export async function renderProductManager(container) {
       const pRecipe = allRecipes.filter(r => r.product_id === p.id);
       const previewEl = document.getElementById(`recipe-preview-${p.id}`);
       if (previewEl && pRecipe.length > 0) {
-        previewEl.innerHTML = pRecipe.map(r => `
-          <span class="bg-orange-50 text-orange-600 px-2 py-0.5 rounded-lg text-[9px] font-black border border-orange-100 flex items-center gap-1">
-            🍗 ${r.ingredients.name}: ${r.quantity}
-          </span>
-        `).join('');
+        previewEl.innerHTML = pRecipe.map(r => {
+          const condition = r.usage_condition || 'always';
+          const icon = conditionIcons[condition] || '♾️';
+          return `
+            <span class="bg-orange-50 text-orange-600 px-2 py-0.5 rounded-lg text-[9px] font-black border border-orange-100 flex items-center gap-1" title="${condition}">
+              ${icon} ${r.ingredients.name}: ${r.quantity}
+            </span>
+          `;
+        }).join('');
       }
     });
   };

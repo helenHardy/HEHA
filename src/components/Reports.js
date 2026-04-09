@@ -117,20 +117,26 @@ export async function getDailyReport(targetDate = null) {
                                 if (templateIngredientName) {
                                     const localIng = localBranchIngredients[templateIngredientName.toLowerCase()];
                                     const unitCost = localIng ? (parseFloat(localIng.unit_cost) || 0) : 0;
-                                    const costContribution = unitCost * recipeItem.quantity;
                                     
-                                    itemProductionCost += costContribution;
+                                    // NEW: Check if ingredient should be counted based on order type
+                                    const condition = recipeItem.usage_condition || 'always';
+                                    const matchesType = (condition === 'always') || (condition === order.order_type);
 
-                                    if (!capitalBreakdown[templateIngredientName]) {
-                                        capitalBreakdown[templateIngredientName] = { 
-                                            name: templateIngredientName, 
-                                            qty: 0, 
-                                            capital: 0, 
-                                            unit: localIng?.unit || 'uni' 
-                                        };
+                                    if (matchesType) {
+                                        const costContribution = unitCost * recipeItem.quantity;
+                                        itemProductionCost += costContribution;
+
+                                        if (!capitalBreakdown[templateIngredientName]) {
+                                            capitalBreakdown[templateIngredientName] = { 
+                                                name: templateIngredientName, 
+                                                qty: 0, 
+                                                capital: 0, 
+                                                unit: localIng?.unit || 'uni' 
+                                            };
+                                        }
+                                        capitalBreakdown[templateIngredientName].qty += recipeItem.quantity * q;
+                                        capitalBreakdown[templateIngredientName].capital += costContribution * q;
                                     }
-                                    capitalBreakdown[templateIngredientName].qty += recipeItem.quantity * q;
-                                    capitalBreakdown[templateIngredientName].capital += costContribution * q;
                                 }
                             });
                         } else {
