@@ -46,13 +46,23 @@ export async function getDailyReport(targetDate = null) {
         });
     }
 
-    // 3. Fetch Products, Ingredients and Recipes for Cost Analysis
+    // 3. Fetch Products, Branch Data, Ingredients and Recipes for Cost Analysis
     const { data: allProducts } = await supabase.from('products').select('id, name, cost, price');
+    const { data: branchProducts } = await supabase.from('branch_products').select('*').eq('branch_id', store.activeBranchId);
     const { data: allIngredients } = await supabase.from('ingredients').select('*'); // All branches
     const { data: allRecipes } = await supabase.from('product_ingredients').select('*');
 
     const productMap = {};
-    if (allProducts) allProducts.forEach(p => productMap[String(p.id)] = p);
+    if (allProducts) {
+        allProducts.forEach(p => {
+            const bp = (branchProducts || []).find(x => x.product_id === p.id);
+            productMap[String(p.id)] = {
+                ...p,
+                price: bp ? bp.price : p.price,
+                cost: bp ? (bp.cost || 0) : p.cost // Use branch cost
+            };
+        });
+    }
 
     // Map ingredients by ID for name lookup
     const ingredientNameMap = {};
@@ -332,6 +342,51 @@ export async function renderReports(container, dateParam = null) {
                               </div>
                           </div>
                       `).join('') || '<p class="text-center text-gray-300 py-10 italic text-xs">No hay datos de consumo para costeo granular.</p>'}
+                  </div>
+              </div>
+
+              <!-- RENTABILIDAD POR SUCURSAL (COMPARATIVA) -->
+              <div class="bg-white p-8 rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
+                  <div class="flex justify-between items-center mb-6">
+                      <div>
+                          <h3 class="text-lg font-black text-gray-800 uppercase tracking-tight">Comparativa de Rentabilidad</h3>
+                          <p class="text-[10px] text-gray-400 font-bold uppercase tracking-widest">Desempeño del producto en la sucursal activa</p>
+                      </div>
+                      <div class="h-10 w-10 bg-emerald-50 text-emerald-600 rounded-xl flex items-center justify-center text-xl shadow-sm border border-emerald-100">⚖️</div>
+                  </div>
+                  
+                  <div class="overflow-x-auto pr-2 custom-scrollbar">
+                      <table class="w-full text-left">
+                          <thead class="text-[9px] font-black text-gray-400 uppercase border-b border-gray-50">
+                              <tr>
+                                  <th class="pb-4">Producto</th>
+                                  <th class="pb-4 text-right">P. Venta</th>
+                                  <th class="pb-4 text-right">Costo Local</th>
+                                  <th class="pb-4 text-right">Ganancia %</th>
+                              </tr>
+                          </thead>
+                          <tbody class="text-xs">
+                              ${report.topProducts.map(pNameObj => {
+                                  const p = Object.values(report.productMap).find(x => x.name === pNameObj.name);
+                                  if (!p) return '';
+                                  const markup = p.cost > 0 ? ((p.price - p.cost) / p.cost) * 100 : 0;
+                                  let color = 'text-red-500';
+                                  if (markup >= 50) color = 'text-green-500';
+                                  else if (markup >= 30) color = 'text-yellow-600';
+
+                                  return `
+                                      <tr class="border-b border-gray-50 hover:bg-gray-50 transition">
+                                          <td class="py-3 font-black text-gray-700 uppercase tracking-tighter">${p.name}</td>
+                                          <td class="py-3 text-right font-mono text-gray-500">Bs. ${p.price.toFixed(2)}</td>
+                                          <td class="py-3 text-right font-mono text-gray-800">Bs. ${p.cost.toFixed(2)}</td>
+                                          <td class="py-3 text-right">
+                                              <span class="font-black ${color}">+${markup.toFixed(0)}%</span>
+                                          </td>
+                                      </tr>
+                                  `;
+                              }).join('') || '<tr><td colspan="4" class="py-8 text-center text-gray-300 italic">Sin datos de ventas.</td></tr>'}
+                          </tbody>
+                      </table>
                   </div>
               </div>
 

@@ -15,11 +15,12 @@ export async function renderProductManager(container) {
     const bp = (branchData || []).find(x => x.product_id === p.id);
     return {
       ...p,
-      price: bp ? bp.price : p.price, // Fallback to global price if not set
+      price: bp ? bp.price : p.price,
+      cost: bp ? (bp.cost || 0) : p.cost, // Use branch cost, fallback to global for new/migrated
       stock: bp ? bp.stock : 0,
       is_available: bp ? bp.is_available : true,
       track_stock: bp ? bp.track_stock : false,
-      is_configured: !!bp // Helper to show if it has branch data
+      is_configured: !!bp
     };
   }).sort((a, b) => a.name.localeCompare(b.name));
 
@@ -305,7 +306,17 @@ export async function renderProductManager(container) {
                             <td class="py-5 px-4 text-right">
                                <div class="flex flex-col items-end">
                                   <p class="font-black text-gray-800 text-lg tabular-nums">Bs. ${p.price.toFixed(2)}</p>
-                                  <span class="text-[9px] font-black text-green-500 uppercase tracking-tighter">Profit Bs. ${(p.price - (p.cost || 0)).toFixed(2)}</span>
+                                  ${(() => {
+                                    const cost = p.cost || 0;
+                                    const margin = cost > 0 ? ((p.price - cost) / cost) * 100 : 0;
+                                    let color = 'text-red-500';
+                                    let label = '🔴 CRÍTICO';
+                                    if (margin >= 50) { color = 'text-green-500'; label = '🟢 EXCELENTE'; }
+                                    else if (margin >= 40) { color = 'text-emerald-500'; label = '🟡 BUENO'; }
+                                    else if (margin >= 30) { color = 'text-yellow-500'; label = '🟡 MÍNIMO'; }
+                                    
+                                    return `<span class="text-[9px] font-black uppercase tracking-tighter ${color}">${label} (+${margin.toFixed(0)}%)</span>`;
+                                  })()}
                                </div>
                             </td>
                             <td class="py-5 px-10 text-right">
@@ -440,10 +451,36 @@ export async function renderProductManager(container) {
     }, 0);
 
     const activeCost = parseFloat(costInput.value) || 0;
-    const margin = price - activeCost;
+    const marginAmount = price - activeCost;
+    const markupPercent = activeCost > 0 ? (marginAmount / activeCost) * 100 : 0;
     
-    marginDisplay.innerText = `${margin.toFixed(2)} Bs`;
-    marginDisplay.className = `text-xl font-black font-mono ${margin >= 0 ? 'text-green-400' : 'text-red-400'}`;
+    let statusLabel = '🔴 MARGEN INSUFICIENTE';
+    let statusColor = 'text-red-500';
+    let bgColor = 'bg-red-500/10';
+
+    if (markupPercent >= 50) {
+        statusLabel = '🟢 EXCELENTE RENTABILIDAD';
+        statusColor = 'text-green-400';
+        bgColor = 'bg-green-400/10';
+    } else if (markupPercent >= 40) {
+        statusLabel = '🟡 BUEN MARGEN';
+        statusColor = 'text-yellow-400';
+        bgColor = 'bg-yellow-400/10';
+    } else if (markupPercent >= 30) {
+        statusLabel = '🟡 MARGEN MÍNIMO';
+        statusColor = 'text-orange-400';
+        bgColor = 'bg-orange-400/10';
+    }
+
+    marginDisplay.innerHTML = `
+      <div class="flex flex-col">
+        <span class="${statusColor}">${marginAmount.toFixed(2)} Bs</span>
+        <span class="text-[9px] font-bold tracking-widest mt-1 opacity-80">${statusLabel} (+${markupPercent.toFixed(1)}%)</span>
+      </div>
+    `;
+    
+    const parentContainer = marginDisplay.parentElement;
+    parentContainer.style.background = bgColor;
   };
 
   document.getElementById('btn-calc-cost').onclick = () => {
@@ -620,6 +657,7 @@ export async function renderProductManager(container) {
 
     const branchProductData = {
       price: parseFloat(price),
+      cost: parseFloat(cost) || 0, // NEW: Cost is now branch-specific
       track_stock,
       is_available,
       stock: parseInt(stock) || 0,
@@ -707,9 +745,9 @@ export async function renderProductManager(container) {
     if (p) {
       document.getElementById('prod-id').value = p.id;
       document.getElementById('prod-name').value = p.name;
-      // Use branch price if exists, else global
+      // Use branch price and cost if exists, else global
       document.getElementById('prod-price').value = bp ? bp.price : p.price;
-      document.getElementById('prod-cost').value = p.cost;
+      document.getElementById('prod-cost').value = bp ? (bp.cost || 0) : p.cost;
       document.getElementById('prod-category').value = p.category || 'General';
       document.getElementById('prod-track-stock').checked = bp ? bp.track_stock : false;
       document.getElementById('prod-available').checked = bp ? bp.is_available : true;
