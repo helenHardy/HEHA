@@ -649,6 +649,7 @@ export async function renderProductManager(container) {
 
     const productData = {
       name,
+      price: parseFloat(price) || 0,
       category,
       image_url,
       description,
